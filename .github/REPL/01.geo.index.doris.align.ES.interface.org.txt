@@ -84,27 +84,32 @@
         build entry point, not by hand (AGENTS.md "Submodules").
   - [ ] D4 thirdparty prebuilt (=thirdparty/installed=) inside the build-env image, or =build-thirdparty.sh=.
 
-* Frontier (decisions that change the plan -- ask before Phase B)
-  - :interrupt: F1 Index shape.  :recommend: (a) -- reuses the 1-D BKD and H3 that are already in the tree.
-    (a) H3 cell id (BIGINT, resolution r) as a hidden column + existing numeric BKD/inverted index on it; a polygon
-        query = =h3 polyfill= -> cell set (+ compact ranges) -> index lookup -> exact ST_Contains on candidates.
-    (b) true 2-D BKD (extend snii bkd to num_dims=2, Lucene LatLonPoint style).  Best pruning, but a new on-disk
-        format and the =gensrc= thrift/proto upgrade rule (gensrc/AGENTS.md) apply.
-    (c) No storage change: SQL rewrite rule only (bbox BETWEEN + ST_Contains) -- already possible by hand today.
-  - :interrupt: F2 "plugin / addon".  Doris has no index plugin SPI (MEASURED).  :recommend: in-tree change on a
-    fork branch =geo-index= (kept rebase-able onto master); "plugin" = a self-contained directory + one
-    registration point, not a .so loaded at runtime (AGENTS.md "Remote Artifacts and Dynamic Code Loading"
-    forbids new dynamic-load paths).
-  - :interrupt: F3 Language.  Doris BE is C++ (MEASURED, no Rust in tree).  :recommend: C++ (matches the BE, the
-    BKD and H3 code it reuses, and the build).  Rust would need a new FFI + cargo in the CMake build.
-  - :interrupt: F4 Target branch: master (4.x) vs branch-3.1 (the user's cluster runs 3.0/3.1).
-    :recommend: master for development; back-port is a separate plan.
-  - :interrupt: F5 Upstream: contribute to apache/doris (PR via doris-pr-description) or keep internal.
-    Owner 12:21Z relay: "we are going to open-source this" (owner GitHub fork) -> leans open source; an upstream
-    PR to apache/doris is still the owner's call.
-  - Note (GUIDING PRINCIPLE, 12:21Z): "fastest algorithm" re-weighs F1 toward (b) a true 2-D BKD (best pruning,
-    no H3 polyfill or false-positive recheck at cell edges); the :recommend: (a) was chosen to minimise
-    dependency/format cost, which the owner says to ignore.  F1 stays the owner's call -- ask with this note.
+* Frontier (decisions that change the plan -- all CLOSED 2026-11-19, room doris acks to 20261119T120404Z-af9d61)
+  - :interrupt_TAKEN_AND_CLOSED: F1 Index shape = (a): a cell-id column (BIGINT) + the existing 1-D numeric
+    BKD/inverted index on it; a polygon query = polygon -> covering cell ranges -> index lookup -> exact
+    ST_Contains on the candidates only.  Cell encoder = our own geohash / Z-order (Morton) code, NOT H3: H3 is
+    master-only and absent from branch-3.1 / branch-4.1, so it would break F3/F4.
+    :USER_VERBATIM_2026-11-19: (owner, Feishu 12:22:05Z, translated) "F1: pick the simplest, most compatible
+    implementation, then efficiency."  Rule for every later choice: simplest and most compatible first, then
+    efficiency (refines the GUIDING PRINCIPLE above).
+    Rejected: (b) true 2-D BKD (new on-disk format + gensrc upgrade rule); (c) SQL-rewrite-only bbox prefilter
+    (that is the Phase B baseline, not the index).
+  - :interrupt_TAKEN_AND_CLOSED: F2 "plugin / addon" = a separate, self-contained directory for the version-independent
+    core + a thin per-version adapter (registration / DDL / planner hook) per Doris branch; no runtime .so
+    (AGENTS.md forbids new dynamic-load paths).
+    :USER_VERBATIM_2026-11-19: (owner, Feishu 12:22:05Z, translated) "F2: separate directory."
+  - :interrupt_TAKEN_AND_CLOSED: F3 Language = C++, compatible with Doris 3.1 and 4.1.
+    :USER_VERBATIM_2026-11-19: (owner, Feishu 12:23:17Z) "F3 C++"; (chaochao, Feishu 12:25:07Z, translated)
+    "F3 compatible with 3.1, 4.1".
+  - :interrupt_TAKEN_AND_CLOSED: F4 Branches = develop on master (branch =geo-index=); then the same core builds and
+    passes the same tests on branch-4.1 and branch-3.1 (Phase Z items Z.4, Z.5).
+    :USER_VERBATIM_2026-11-19: (chaochao, Feishu 12:25:53Z) "F4 master"; with his 12:24Z question "can it be
+    supported on both 3.1 and 4.1".
+  - :interrupt_TAKEN_AND_CLOSED: F5 Open source on the owner's GitHub fork =bartuer/doris= (origin), apache/doris =
+    upstream (push disabled).  The fork does not exist yet and no box holds a GitHub token (dot-emacs stores
+    none by design): commits stay local on =geo-index= and are pushed when the fork exists (room task c89e64 open).
+    :USER_VERBATIM_2026-11-19: (chaochao, Feishu 12:25:53Z, translated) "F5 OK"; owner 12:21Z relay "we are going
+    to open-source this".
 
 * Context
   - ES side to align with:
@@ -144,11 +149,11 @@
         :test_tool: =./run-be-ut.sh --run --filter=GeoIndex*= green.
   - [ ] C.2 reader + query: polygon -> cell set -> row bitmap; exact ST_Contains on the candidates only.
         :test_tool: BE UT: 3 polygons x 10 k random points, bitmap == brute force.
-  - [ ] C.3 FE: =INDEX idx (lon, lat) USING GEO PROPERTIES("resolution"="9")= DDL + planner pushes
+  - [ ] C.3 FE: =INDEX idx (lon, lat) USING GEO PROPERTIES("precision"="<cell bits>")= DDL + planner pushes
         =ST_Contains(<const polygon>, ST_Point(lon, lat))= to the index.
         :test_tool: =./run-fe-ut.sh --run <GeoIndex test>= green; EXPLAIN shows the index predicate.
 
-* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup [0/3]
+* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [0/5]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,B,C
   - [ ] Z.1 ES -> Doris mapping table (G2) in =fix.archive/01.geo.es.mapping.md=.
@@ -156,6 +161,10 @@
         :test_tool: =./run-regression-test.sh --run -s geo_index_p0= PASS.
   - [ ] Z.3 100 M points, the 3 polygons: rows scanned <= 5%, >= 3x vs bbox baseline (G4)
         -> =fix.archive/01.geo.bench.md=.
+  - [ ] Z.4 port to =branch-4.1=: the core directory unchanged + the 4.1 adapter; BE UT + =geo_index_p0= pass (F3/F4).
+        :test_tool: =./run-be-ut.sh --run --filter=GeoIndex*= and =./run-regression-test.sh --run -d geo_index_p0= PASS on 4.1.
+  - [ ] Z.5 port to =branch-3.1=: same core + the 3.1 adapter; same tests pass (F3/F4).
+        :test_tool: as Z.4, on branch-3.1.
 
 * Main Loop
   - (R) run the phase's :test_tool: in a separate shell from the build; read Profile / UT output.
