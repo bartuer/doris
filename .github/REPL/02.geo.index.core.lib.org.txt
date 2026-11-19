@@ -184,7 +184,7 @@
         macOS), keeps ASan+UBSan.  S2 0.14 vs 0.10: only API used must exist in both (checked by building against both).
         :test_tool: on a macOS box (or GitHub Actions =macos-14= in the fork): =run_tests.sh= exit 0.
 
-* TODO Phase Z -- integrate into Doris (adapter, master) [3/4]
+* DONE Phase Z -- integrate into Doris (adapter, master) [4/4]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,P,B
   - [X] Z.1 BE adapter: =be/src/exprs/function/geo/functions_geo_cell.cpp= registers scalar =s2_cell(lon, lat[, level])=
@@ -198,7 +198,7 @@
         try failed: 's2/s2cell_id.h' not found).  ASAN BE UT 3/3 GeoCellTest incl. 9,491 fixture points == core.
         :kiss: rung 2 -- copied the =h3_lat_lng_to_cell= adapter shape; ~70 lines BE + ~60 lines FE.
         :audit: code-review/gpt-6-astra: 0 findings (link "/workspace/doris/.github/REPL/fix.archive/02.audit.be-adapter.md" 1)
-  - [ ] Z.3 in-BE memory check (the core runs INSIDE doris_be, statically linked C++; no JVM/JNI boundary):
+  - [X] Z.3 in-BE memory check (the core runs INSIDE doris_be, statically linked C++; no JVM/JNI boundary):
         (a) ASAN BE UT: the Z.1 test under Doris' own =BUILD_TYPE=ASAN= (=CXX_FLAGS_ASAN=, ldb clang).  Watch
             for the absl btree layout mismatch seen standalone (fix.archive/02.audit.core.md #3): if Doris'
             thirdparty S2/absl are not ASan-built, clang + ASan flips absl's btree layout in our TU only.
@@ -215,6 +215,11 @@
             jemalloc is NOT required: ON by default on Linux, OFF for =BUILD_TYPE=ASAN= and macOS (=build.sh=).
             The core uses only std allocation, so it is allocator-agnostic; the ASAN UT runs it on glibc malloc.
         :test_tool: =./run-be-ut.sh --run --filter=GeoCell*= green under ASAN and LSAN.
+        DONE 22:55Z: (a) ASAN (ldb clang, Doris thirdparty S2/absl): GeoCellTest 4/4 + 46 BKD tests, no ASan report, no
+        absl btree abort -- the standalone layout mismatch does not occur in Doris' ASAN build. (b) =BUILD_TYPE_UT=LSAN=:
+        GeoCellTest 4/4 + SniiBkdAdapterTest.ReaderAnswersClosedBetween + InvertedIndexReaderTest.BkdBetweenQuery: PASSED 6,
+        no LeakSanitizer report. (c) =cell_of= 0 allocations (A.5, glibc interposer with 9/9 positive control); cover()
+        allocations go through jemalloc untracked, bounded (P.1: <= 64 cells -> <= 42 ranges).
         :audit: gpt-6-astra, write-up fix.archive/02.audit.be-adapter.md.
   - [X] Z.4 in-BE perf: the P.1 numbers inside doris_be (RELEASE): load 10 M rows with the generated cell column
         vs without (plan 01 B.2 table) -> load-time overhead; cover() time from the query Profile.
