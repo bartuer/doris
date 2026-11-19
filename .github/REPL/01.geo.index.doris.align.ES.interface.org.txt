@@ -87,7 +87,8 @@
 * Frontier (decisions that change the plan -- all CLOSED 2026-11-19, room doris acks to 20261119T120404Z-af9d61)
   - :interrupt_TAKEN_AND_CLOSED: F1 Index shape = (a): a cell-id column (BIGINT) + the existing 1-D numeric
     BKD/inverted index on it; a polygon query = polygon -> covering cell ranges -> index lookup -> exact
-    ST_Contains on the candidates only.  Cell encoder = our own geohash / Z-order (Morton) code, NOT H3: H3 is
+    ST_Contains on the candidates only.  Cell encoder = our own geohash / Z-order (Morton) code [SUPERSEDED 13:45Z by S2 cell id: S2 is a Doris
+    thirdparty on all three branches, see plan 02 MEASURED], NOT H3: H3 is
     master-only and absent from branch-3.1 / branch-4.1, so it would break F3/F4.
     :USER_VERBATIM_2026-11-19: (owner, Feishu 12:22:05Z, translated) "F1: pick the simplest, most compatible
     implementation, then efficiency."  Rule for every later choice: simplest and most compatible first, then
@@ -131,11 +132,14 @@
   - [X] A.3 pull =apache/doris:build-env-ldb-toolchain-latest=.
   - [X] A.4 tmux session =doris_geo_index= (copilot CLI, cwd /workspace/doris) joined to room =doris=.
 
-* TODO Phase B -- baseline: build BE once, measure the no-index query [0/3]
+* TODO Phase B -- baseline: build BE once, measure the no-index query [1/3]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A
-  - [ ] B.1 build BE + FE in the build-env container (=./build.sh --be --fe=, output/ on the host volume).
+  - [X] B.1 build BE + FE in the build-env container (=./build.sh --be --fe=, output/ on the host volume).
         :test_tool: =output/be/lib/doris_be --version= prints the master sha.
+        DONE 14:08Z: =BUILD_TYPE=RELEASE= (custom_env.sh, not committed; Phase B measures speed), =-j 24=, 39 min,
+        "Successfully build Doris" EXIT=0 (=build_B1.log=, untracked).  In the container with libjvm on
+        LD_LIBRARY_PATH: "doris-0.0.0(AVX2) RELEASE ... build ...@7dfe916aad" = master dbb9b19391 + plan commits only.
   - [ ] B.2 single-node cluster from output/ (random ports per AGENTS.md worktree rule), table =geo_pts(id, lon, lat)=,
         10 M synthetic points.
   - [ ] B.3 baseline numbers: full ST_Contains scan vs bbox-prefilter + ST_Contains for 3 polygons (city, thin, concave);
@@ -145,11 +149,16 @@
 * TODO Phase C -- the index (shape chosen at F1) [0/3]
   :needs: {"tier":"wsl","box":"c05"}
   :after: B
+  - Phase C core (cell encoder, polygon cover, tests, memcheck, Docker) is split out to plan 02
+    (link "/workspace/doris/.github/REPL/02.geo.index.core.lib.org.txt" 1).  MEASURED 13:45Z: S2 0.10.0 is a
+    Doris thirdparty on master, 4.1 and 3.1 -> the F1 cell encoder is S2 (not an own geohash; KISS rung 5).
+    C.1/C.2 are done when plan 02 Phase A + Z.1 are done.
   - [ ] C.1 writer: per segment, cells/points -> index file (reuse snii bkd builder for (a)).  BE unit test.
         :test_tool: =./run-be-ut.sh --run --filter=GeoIndex*= green.
   - [ ] C.2 reader + query: polygon -> cell set -> row bitmap; exact ST_Contains on the candidates only.
         :test_tool: BE UT: 3 polygons x 10 k random points, bitmap == brute force.
-  - [ ] C.3 FE: =INDEX idx (lon, lat) USING GEO PROPERTIES("precision"="<cell bits>")= DDL + planner pushes
+  - [ ] C.3 FE: DDL = generated column =geo_cell BIGINT AS (s2_cell(lon, lat))= + =INDEX idx_cell (geo_cell)
+        USING INVERTED= (existing numeric index, no new index type; audit 14:00Z finding 4) + planner pushes
         =ST_Contains(<const polygon>, ST_Point(lon, lat))= to the index.
         :test_tool: =./run-fe-ut.sh --run <GeoIndex test>= green; EXPLAIN shows the index predicate.
 

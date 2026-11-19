@@ -1,0 +1,160 @@
+; -*- mode: Org;-*-
+
+#+TITLE: 02 geo.index.core.lib
+#+STARTUP: overview
+
+* Dev process setup
+  Before executing ANY work item in this plan, open and obey
+  the rules defined in this project's per-repo instructions:
+
+    - .github/copilot-instructions.md  (mirrored in CLAUDE.md): R-KISS, R-AUDIT, R-MEMCHECK, R-TESTDATA, R-ROOM
+    - AGENTS.md  (apache/doris; coding standards, build/test entry points)
+
+  Read the current rules there and follow them.  This plan intentionally does
+  not restate any rule -- the per-repo instructions are the single source of truth.
+
+* Execution environment
+  This plan runs on a multi-machine environment described in:
+
+    - ${FLEET_HOME:-$HOME/.fleet}/cluster.md
+
+  Read it before executing.  Where it defines parallelism, it
+  outranks subagent fan-out.  This plan does not restate it.
+
+* USER VERBATIM 2026-11-19T13:40Z (owner, CLI session doris_geo_index)
+  - "if need we can create more org plan by /org_plan to make the implement as simple as possible, as modular as
+     possible, clean C++ code with careful memory check, maybe use tool valgrind, and have a Dockerimage to setup
+     the test env, check in the geo-index purpose test (include test data) for easy test in local env like Linux
+     or MacOS"
+  - "always check design with /kiss and always audit code by seperate agent even different model, add such dev
+     process to copilot-instructions.md"  -> done: R-KISS, R-AUDIT (.github/copilot-instructions.md).
+
+* MEASURED 2026-11-19T13:45Z (doris_geo_index, c05)
+  - =cli -r= header: "ASK 0 HITL 3 PERM 0 ERR 0 STALL 26 IDLE 30 DEAD 0 GONE 0|170 live/32 box|feed 0s".
+    No other live session works on doris / geo; room =doris= has one worker (doris_geo_index).  Join it, do not
+    create a room.  Single worker -> no :parallel_group: waves in this plan.
+  - S2 geometry: v0.10.0 is ALREADY a Doris thirdparty on master, branch-4.1 AND branch-3.1 (=thirdparty/vars.sh=
+    =S2_DOWNLOAD=; =geo_types.cpp= includes =<s2/...>= on all three).  Ubuntu 24.04 =libs2-dev= = 0.10.0 (same
+    version); Homebrew =s2geometry= = 0.14.0.  -> S2 is the cell encoder: no new dependency, exact polygon
+    covering (=S2RegionCoverer=) and exact point-in-polygon (=S2Polygon::Contains=) for free.  This replaces the
+    "own geohash / Z-order" in plan 01 F1 (KISS rung 5: an installed dependency provides it; H3 was rejected only
+    because it is master-only -- S2 is not).
+  - geo source path differs per branch: master + 4.1 =be/src/exprs/function/geo/=, 3.1 =be/src/geo/= (+
+    =be/src/vec/functions/functions_geo.cpp=).  -> the core must not include Doris headers; adapters do.
+  - FE generated columns (=GeneratedColumnInfo.java=) exist on master, 4.1 and 3.1 -> the cell column can be a
+    generated column =AS (s2_cell(lon, lat))=, indexed by the EXISTING numeric inverted (BKD) index.
+  - BE UT discovery is glob-based (=be/test/CMakeLists.txt= =GLOB_RECURSE= over =storage/*.cpp=, =exprs/*.cpp=):
+    a test file in the right dir is picked up with no CMake edit.
+
+* Goal [0/4]
+  - [ ] G1 A standalone C++17 library =geo_index_core= (no Doris headers): point -> cell id; polygon -> sorted
+        disjoint cell-id ranges that cover it (superset; the exact recheck is Doris' own ST_Contains).  Only dependency: S2 (+ gtest for tests).
+  - [ ] G2 Memory-clean: core unit tests pass under ASan+UBSan and under valgrind (0 errors, 0 leaks).
+  - [ ] G3 One-command local test on Linux and macOS (=contrib/geo_index_core/run_tests.sh=), and the same in a
+        checked-in Docker image (reference env).
+  - [ ] G4 Checked-in test data (points, polygons incl. antimeridian / pole / concave / hole / boundary, expected
+        hits) + generator script; core correctness = 0 false negatives of the cover vs S2Polygon::Contains
+        (boundary points: cover must include them too).  Exact SQL equality is plan 01 Z.2.
+
+* Dependencies
+  - [X] D1 plan 01 F1-F5 closed (7dfe916aad); this plan IS plan 01 Phase C's core, split out (plan 01 C.1/C.2 link here).
+  - [ ] D2 S2 0.10.0 headers + lib: Docker (=libs2-dev=), macOS (=brew install s2geometry=), Doris build
+        (=thirdparty/installed=).  gtest: =libgtest-dev= / =brew install googletest= / Doris thirdparty.
+
+* Design (passes /kiss -- record changes here, not in code)
+  - :kiss: audit 2026-11-19 (author): folded the memcheck item into A.1 (one script from day one); Z.1 = one
+    add_subdirectory line, no source copy.  Ceiling kept on purpose: per-level cell column only (no multi-level
+    cells); upgrade when a polygon cover exceeds max_cells ranges and Profile shows > 5% rows scanned.
+  - :audit: 2026-11-19 code-review/gpt-6-sol on this design: 4 HIGH, 4 fixed, 0 rejected.
+    (1) no find_package(s2) -- S2 0.10 installs no CMake config -> explicit find_path/find_library + absl link.
+    (2) add_subdirectory alone does not link -> also =target_link_libraries(Exprs geo_index_core)= + the UT target.
+    (3) oracle: Doris =GeoPolygon::contains= excludes points ON an edge and normalizes loops / validates holes;
+        S2Polygon::Contains does not.  -> core tests only prove NO FALSE NEGATIVES of the cover (superset); exact
+        equality is proven where it matters: Doris indexed vs unindexed =ST_Contains= (plan 01 Z.2), and the core
+        recheck is never used -- Doris' own =ST_Contains= is the recheck, cover() takes the Doris-parsed S2Polygon.
+    (4) plan 01 C.3 DDL said =USING GEO=; fixed to a generated cell column + existing numeric inverted index.
+    Confirmed sound: =id ^ (1<<63)= keeps unsigned order under signed BIGINT; a covering cell coarser than or equal
+    to the column level brackets every stored descendant with =range_min()/range_max()=, so BETWEEN is sound.
+  - :kiss: rung 2/5 -- reuse S2 (Doris thirdparty on all 3 branches) for cells, covering and containment;
+    reuse Doris' existing numeric inverted (BKD) index for storage and range lookup.  New code = only the glue
+    below (estimate < 300 lines + tests).  No new on-disk format, no thrift/proto change, no new index type.
+  - Module layout (separate directory, F2):
+    #+BEGIN_SRC text
+    contrib/geo_index_core/            # standalone, no Doris includes
+      include/geo_index/cell.h         # uint64 cell_of(lat, lon, level)
+      include/geo_index/cover.h        # std::vector<CellRange> cover(const S2Polygon&, CoverOptions)
+      src/{cell,cover}.cpp
+      test/{cell,cover}_test.cpp       # gtest
+      test/data/*.csv, *.wkt           # checked-in fixtures (R-TESTDATA)
+      test/data/gen_fixtures.py        # fixed seed, regenerates the fixtures
+      CMakeLists.txt                   # S2 by find_path/find_library (S2 0.10 ships no CMake config) + absl
+                                       # + OpenSSL deps; GTest; options ASAN/UBSAN
+      run_tests.sh                     # Linux/macOS: cmake + ctest + valgrind
+      Dockerfile                       # ubuntu:24.04 + libs2-dev + libgtest-dev + valgrind + cmake
+    #+END_SRC
+  - Contract:
+    - =cell_of= = =S2CellId(S2LatLng::FromDegrees(lat, lon)).parent(level).id()= as int64 (BIGINT-sortable:
+      S2 ids are uint64; map with =id ^ (1ULL<<63)= so signed order == Hilbert order -- verify in test).
+    - =cover= = =S2RegionCoverer= (max_cells, max_level = column level) -> each cell -> [range_min, range_max] at
+      the column level -> sort + merge adjacent.  Query side: =cell BETWEEN lo AND hi OR ...= then exact
+      =ST_Contains= recheck (Doris already has it).
+    - Recheck is exact, so covering only affects speed, never correctness.
+  - Rejected (kiss): own geohash/Z-order encoder (S2 already present); custom index file (BKD exists); a C ABI /
+    plugin .so (AGENTS.md forbids dynamic load; F2 = directory + adapter).
+  - :interrupt: none -- every choice is measured above or reversible (one directory).
+
+* TODO Phase A -- core library + checked-in tests + memcheck [0/3]
+  :needs: {"tier":"wsl","box":"c05"}
+  - [ ] A.1 =contrib/geo_index_core/= skeleton: CMakeLists (C++17, =-Wall -Wextra -Werror=, options
+        =GEO_ASAN=, =GEO_UBSAN=), =cell.h/.cpp= (=cell_of=), =cell_test.cpp=: known lat/lon -> known id,
+        signed order == Hilbert order, level bounds DORIS_CHECK-style asserts.
+        :kiss: <record before coding>
+        =run_tests.sh= from day one runs ctest twice (R-MEMCHECK): ASan+UBSan build, then plain build under
+        =valgrind --error-exitcode=1 --leak-check=full --errors-for-leak-kinds=definite,indirect=.
+        :test_tool: =contrib/geo_index_core/run_tests.sh= exit 0; ctest green in both builds; valgrind
+        "ERROR SUMMARY: 0 errors" for every test binary.
+        :audit: <record after test passes>
+  - [ ] A.2 =cover.h/.cpp=: polygon -> merged cell ranges; =cover_test.cpp=: for every fixture point,
+        =in_ranges(cell_of(p)) || !polygon.Contains(p)= (no false negatives), and ranges are sorted + disjoint.
+        :kiss: <record>
+        :test_tool: =run_tests.sh= green.
+        :audit: <record>
+  - [ ] A.3 fixtures (R-TESTDATA): =gen_fixtures.py= (seed 42) -> =points.csv= (10 k, incl. exact vertices, edges,
+        lon +-180, lat +-90), =polygons.wkt= (city, thin, concave, with hole, antimeridian-crossing, pole cap),
+        =expected.csv= (polygon id, point id) from brute force.  Total <= 1 MB.
+        :test_tool: =run_tests.sh= green; =du -sh test/data= <= 1M; regenerating gives an identical =git diff=.
+
+* TODO Phase B -- reference env: Docker image + macOS [0/2]
+  :needs: {"tier":"wsl","box":"c05"}
+  :after: A
+  - [ ] B.1 =contrib/geo_index_core/Dockerfile= (ubuntu:24.04, =libs2-dev= 0.10.0 = Doris' S2 version,
+        =libgtest-dev=, =valgrind=, =cmake=, =g++=, =python3=).  Usage in README section of =run_tests.sh= header.
+        :test_tool: =docker build -t geo-index-core contrib/geo_index_core && docker run --rm -v $PWD:/src geo-index-core /src/contrib/geo_index_core/run_tests.sh= exit 0.
+  - [ ] B.2 macOS path: =run_tests.sh= detects Darwin -> brew prefix for s2/gtest, skips valgrind (not on arm64
+        macOS), keeps ASan+UBSan.  S2 0.14 vs 0.10: only API used must exist in both (checked by building against both).
+        :test_tool: on a macOS box (or GitHub Actions =macos-14= in the fork): =run_tests.sh= exit 0.
+
+* TODO Phase Z -- integrate into Doris (adapter, master) [0/2]
+  :needs: {"tier":"wsl","box":"c05"}
+  :after: A,B
+  - [ ] Z.1 BE adapter: =be/src/exprs/function/geo/functions_geo_cell.cpp= registers scalar =s2_cell(lon, lat[, level])=
+        (calls =cell_of=) + BE UT =be/test/exprs/function/geo/geo_cell_test.cpp= reusing A.3 fixtures.
+        The core joins the BE build with =add_subdirectory(contrib/geo_index_core)= +
+        =target_link_libraries(Exprs ... geo_index_core)= (+ the BE UT link list); S2 from =thirdparty/installed=;
+        no file copied into =be/src=.  cover() is called with the S2Polygon Doris already parsed (=GeoPolygon=).  :kiss: <record>
+        :test_tool: =./run-be-ut.sh --run --filter=GeoCell*= green (ASAN build).
+        :audit: <record>
+  - [ ] Z.2 hand off to plan 01 Phase C.3: generated column =cell BIGINT AS (s2_cell(lon, lat))= + numeric inverted
+        index; planner rewrite of =ST_Contains(<const polygon>, ST_Point(lon, lat))= into =cover()= ranges + recheck.
+        :test_tool: plan 01 C.3 / Z.2 test tools.
+
+* Main Loop
+  - (R) =run_tests.sh= (separate shell) -> read ctest + ASan + valgrind output.
+  - (E) fix in =contrib/geo_index_core/=; /kiss the design first; separate-model audit after green.
+  - (P) re-run; (L) until Goal [4/4].
+
+* References
+  - S2 RegionCoverer / CellId: https://s2geometry.io/devguide/s2cell_hierarchy , https://s2geometry.io/devguide/examples/coverings
+  - (link "/workspace/doris/be/src/exprs/function/geo/geo_types.cpp" 1)  existing S2 usage in Doris
+  - (link "/workspace/doris/thirdparty/vars.sh" 13000)  S2_DOWNLOAD v0.10.0
+  - (link "/workspace/doris/.github/REPL/01.geo.index.doris.align.ES.interface.org.txt" 1)  parent plan
