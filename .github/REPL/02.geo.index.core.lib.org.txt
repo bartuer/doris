@@ -106,38 +106,46 @@
     plugin .so (AGENTS.md forbids dynamic load; F2 = directory + adapter).
   - :interrupt: none -- every choice is measured above or reversible (one directory).
 
-* TODO Phase A -- core library + checked-in tests + memcheck [0/5]
+* DONE Phase A -- core library + checked-in tests + memcheck [5/5]
   :needs: {"tier":"wsl","box":"c05"}
-  - [ ] A.1 =contrib/geo_index_core/= skeleton: CMakeLists (C++17, =-Wall -Wextra -Werror=, options
+  - [X] A.1 =contrib/geo_index_core/= skeleton: CMakeLists (C++17, =-Wall -Wextra -Werror=, options
         =GEO_ASAN=, =GEO_UBSAN=), =cell.h/.cpp= (=cell_of=), =cell_test.cpp=: known lat/lon -> known id,
         signed order == Hilbert order, level bounds DORIS_CHECK-style asserts.
-        :kiss: <record before coding>
+        :kiss: rung 5 -- S2 (Doris thirdparty) does cells; new code = cell_of (3 lines) + BIGINT map.
         =run_tests.sh= from day one runs ctest twice (R-MEMCHECK): ASan+UBSan build, then plain build under
         =valgrind --error-exitcode=1 --leak-check=full --errors-for-leak-kinds=definite,indirect=.
         :test_tool: =contrib/geo_index_core/run_tests.sh= exit 0; ctest green in both builds; valgrind
         "ERROR SUMMARY: 0 errors" for every test binary.
-        :audit: <record after test passes>
-  - [ ] A.2 =cover.h/.cpp=: polygon -> merged cell ranges; =cover_test.cpp=: for every fixture point,
+        :audit: code-review/gpt-6-astra, 2 rounds: 6 findings (3 HIGH, 3 MEDIUM), 6 fixed, 0 rejected
+                (link "/workspace/doris/.github/REPL/fix.archive/02.audit.core.md" 1)
+  - [X] A.2 =cover.h/.cpp=: polygon -> merged cell ranges; =cover_test.cpp=: for every fixture point,
         =in_ranges(cell_of(p)) || !polygon.Contains(p)= (no false negatives), and ranges are sorted + disjoint.
-        :kiss: <record>
+        :kiss: rung 5 -- S2RegionCoverer does the covering; new code = range conversion + merge (~25 lines).
         :test_tool: =run_tests.sh= green.
-        :audit: <record>
-  - [ ] A.3 fixtures (R-TESTDATA): =gen_fixtures.py= (seed 42) -> =points.csv= (10 k, incl. exact vertices, edges,
+        :audit: code-review/gpt-6-astra, 2 rounds: 6 findings (3 HIGH, 3 MEDIUM), 6 fixed, 0 rejected
+                (link "/workspace/doris/.github/REPL/fix.archive/02.audit.core.md" 1)
+  - [X] A.3 fixtures (R-TESTDATA): =gen_fixtures.py= (seed 42) -> =points.csv= (10 k, incl. exact vertices, edges,
         lon +-180, lat +-90), =polygons.wkt= (city, thin, concave, with hole, antimeridian-crossing, pole cap),
         =expected.csv= (polygon id, point id) from brute force.  Total <= 1 MB.
         :test_tool: =run_tests.sh= green; =du -sh test/data= <= 1M; regenerating gives an identical =git diff=.
+        DONE: points.csv 9,491 points + polygons.txt 6 polygons, 312K, regenerate = byte-identical.  No
+        expected.csv: the oracle is S2Polygon::Contains computed in the test (kiss: one less file to drift).
 
-  - [ ] A.5 zero-allocation check for =cell_of= (the per-row path at load time): =test/alloc_test.cpp= replaces
+  - [X] A.5 zero-allocation check for =cell_of= (the per-row path at load time): =test/alloc_test.cpp= replaces
         global =operator new= with a counting one; 1 M =cell_of= calls -> 0 allocations.  Allocator-agnostic
         (works on glibc malloc, jemalloc, macOS), so no jemalloc dependency in the core.
         :test_tool: =run_tests.sh= green.
-  - [ ] A.4 property test (closes the open question in fix.archive/02.audit.core.md #1): checked-in
+        DONE 15:05Z: interposes glibc malloc/calloc/realloc/posix_memalign/aligned_alloc (+ positive control 9/9);
+        1 M cell_of calls -> 0 allocations.  Plain Linux build only (clashes with ASan/valgrind malloc).
+  - [X] A.4 property test (closes the open question in fix.archive/02.audit.core.md #1): checked-in
         =test/property_test.cpp=, fixed seed: 300 random polygons (convex, concave, with hole, antimeridian,
         pole) x levels {8,12,16,20} x max_cells {8,64}; probe points = every covering cell's vertices + edge
         midpoints + 1 k random points per polygon; assert =polygon.Contains(p) => in_ranges(cell_of(p))=.
         Run it with and without =Expand= (CMake option =GEO_COVER_EXPAND=, default ON) -- recorded, not asserted.
         :test_tool: =run_tests.sh= green (ASan+UBSan and valgrind), property test runtime <= 30 s under valgrind.
-        :audit: round 2 of fix.archive/02.audit.core.md (gpt-6-astra).
+        :audit: round 2 of fix.archive/02.audit.core.md (gpt-6-astra): 2 MEDIUM test gaps fixed.
+        DONE 15:05Z: 273,621 inside points + 48,416 polygon-boundary points, 0 false negatives, with AND without
+        Expand -> Expand is not needed for S2Polygon input; P.2 decides on cost.
 
 * TODO Phase P -- perf check of the core (Google Benchmark) [0/2]
   :needs: {"tier":"wsl","box":"c05"}

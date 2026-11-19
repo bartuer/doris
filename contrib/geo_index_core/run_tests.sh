@@ -54,4 +54,7 @@ cmake --build "${BUILD_ROOT}/plain" -j "${JOBS}"
 # Death tests fork a child that aborts on purpose; valgrind checks the parent run.
 valgrind --error-exitcode=1 --leak-check=full --errors-for-leak-kinds=definite,indirect \
     "${BUILD_ROOT}/plain/geo_index_core_test" --gtest_filter='-*DeathTest*'
+# Zero-allocation check of cell_of(): counts glibc malloc entry points, so not under
+# valgrind (which replaces malloc itself).
+"${BUILD_ROOT}/plain/geo_index_core_alloc_test"
 echo "== all clean"

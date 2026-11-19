@@ -73,11 +73,21 @@ if(GEO_STANDALONE)
     target_link_libraries(geo_index_core PUBLIC ${S2_LIBRARY} absl::base absl::strings absl::log_severity)
 
     enable_testing()
-    add_executable(geo_index_core_test test/cell_test.cpp test/cover_test.cpp)
+    add_executable(geo_index_core_test test/cell_test.cpp test/cover_test.cpp test/property_test.cpp)
     target_compile_options(geo_index_core_test PRIVATE -Wall -Wextra -Werror)
     target_compile_definitions(geo_index_core_test PRIVATE
         GEO_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data")
     target_link_libraries(geo_index_core_test PRIVATE geo_index_core GTest::gtest_main)
     include(GoogleTest)
     gtest_discover_tests(geo_index_core_test)
+
+    # Own binary: it interposes glibc malloc & co. to count allocations, which
+    # clashes with ASan's own interceptors -> plain Linux builds only (run_tests.sh
+    # runs it in the valgrind pass).
+    if(NOT GEO_SANITIZE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_executable(geo_index_core_alloc_test test/alloc_test.cpp)
+        target_compile_options(geo_index_core_alloc_test PRIVATE -Wall -Wextra -Werror)
+        target_link_libraries(geo_index_core_alloc_test PRIVATE geo_index_core)
+        add_test(NAME GeoIndexCell.CellOfDoesNotAllocate COMMAND geo_index_core_alloc_test)
+    endif()
 endif()
