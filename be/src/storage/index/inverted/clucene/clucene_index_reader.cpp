@@ -611,6 +611,15 @@ Status BkdIndexReader::construct_bkd_query_value(const Field& query_value,
         RETURN_IF_ERROR(encode_bkd_field_ascending(_type, query_value, _value_key_coder,
                                                    &visitor->query_min));
         RETURN_IF_ERROR(encode_bkd_max_ascending(_type, _value_key_coder, &visitor->query_max));
+    } else if constexpr (QT == InvertedIndexQueryType::BETWEEN_QUERY) {
+        // Closed [lo, hi]: both bounds are real values, so the generic visitor
+        // (matches / compare test query_min and query_max) prunes on both sides.
+        const auto& range = query_value.get<TYPE_ARRAY>();
+        DORIS_CHECK(range.size() == 2);
+        RETURN_IF_ERROR(
+                encode_bkd_field_ascending(_type, range[0], _value_key_coder, &visitor->query_min));
+        RETURN_IF_ERROR(
+                encode_bkd_field_ascending(_type, range[1], _value_key_coder, &visitor->query_max));
     } else {
         return Status::Error<ErrorCode::INVERTED_INDEX_NOT_SUPPORTED>(
                 "invalid query type when query bkd index");
@@ -659,6 +668,14 @@ Status BkdIndexReader::invoke_bkd_try_query(const IndexQueryContextPtr& context,
     case InvertedIndexQueryType::EQUAL_QUERY: {
         auto visitor = std::make_unique<InvertedIndexVisitor<InvertedIndexQueryType::EQUAL_QUERY>>(
                 context->io_ctx, r.get(), nullptr, true);
+        RETURN_IF_ERROR(construct_bkd_query_value(query_value, r, visitor.get()));
+        *count = r->estimate_point_count(visitor.get());
+        break;
+    }
+    case InvertedIndexQueryType::BETWEEN_QUERY: {
+        auto visitor =
+                std::make_unique<InvertedIndexVisitor<InvertedIndexQueryType::BETWEEN_QUERY>>(
+                        context->io_ctx, r.get(), nullptr, true);
         RETURN_IF_ERROR(construct_bkd_query_value(query_value, r, visitor.get()));
         *count = r->estimate_point_count(visitor.get());
         break;
@@ -714,9 +731,32 @@ Status BkdIndexReader::invoke_bkd_query(const IndexQueryContextPtr& context,
         r->intersect(visitor.get());
         break;
     }
+    case InvertedIndexQueryType::BETWEEN_QUERY: {
+        auto visitor =
+                std::make_unique<InvertedIndexVisitor<InvertedIndexQueryType::BETWEEN_QUERY>>(
+                        context->io_ctx, r.get(), bit_map.get());
+        RETURN_IF_ERROR(construct_bkd_query_value(query_value, r, visitor.get()));
+        r->intersect(visitor.get());
+        break;
+    }
     default:
         return Status::Error<ErrorCode::INVERTED_INDEX_NOT_SUPPORTED>("Invalid query type");
     }
+    return Status::OK();
+}
+
+// Query-cache key bytes: the encoded value, or both encoded bounds for a BETWEEN.
+Status BkdIndexReader::encode_bkd_cache_key(const Field& query_value,
+                                            InvertedIndexQueryType query_type, std::string* out) {
+    if (query_type != InvertedIndexQueryType::BETWEEN_QUERY) {
+        return encode_bkd_field_ascending(_type, query_value, _value_key_coder, out);
+    }
+    const auto& range = query_value.get<TYPE_ARRAY>();
+    DORIS_CHECK(range.size() == 2);
+    std::string upper;
+    RETURN_IF_ERROR(encode_bkd_field_ascending(_type, range[0], _value_key_coder, out));
+    RETURN_IF_ERROR(encode_bkd_field_ascending(_type, range[1], _value_key_coder, &upper));
+    out->append(upper);
     return Status::OK();
 }
 
@@ -733,8 +773,7 @@ Status BkdIndexReader::try_query(const IndexQueryContextPtr& context,
             return st;
         }
         std::string query_str;
-        RETURN_IF_ERROR(
-                encode_bkd_field_ascending(_type, query_value, _value_key_coder, &query_str));
+        RETURN_IF_ERROR(encode_bkd_cache_key(query_value, query_type, &query_str));
 
         auto index_file_key = _index_file_reader->get_index_file_cache_key(&_index_meta);
         InvertedIndexQueryCache::CacheKey cache_key {index_file_key, column_name, query_type,
@@ -773,8 +812,7 @@ Status BkdIndexReader::query(const IndexQueryContextPtr& context, const std::str
             return st;
         }
         std::string query_str;
-        RETURN_IF_ERROR(
-                encode_bkd_field_ascending(_type, query_value, _value_key_coder, &query_str));
+        RETURN_IF_ERROR(encode_bkd_cache_key(query_value, query_type, &query_str));
 
         auto index_file_key = _index_file_reader->get_index_file_cache_key(&_index_meta);
         InvertedIndexQueryCache::CacheKey cache_key {index_file_key, column_name, query_type,
@@ -1021,6 +1059,24 @@ int InvertedIndexVisitor<InvertedIndexQueryType::GREATER_EQUAL_QUERY>::matches(
     }
 }
 
+// Closed [query_min, query_max] on a 1-D index (the geo cell column): 0 = inside,
+// 1 = above (the traversal can stop), -1 = below.  The generic template treats
+// the bounds as exclusive, which a BETWEEN must not.
+template <>
+int InvertedIndexVisitor<InvertedIndexQueryType::BETWEEN_QUERY>::matches(uint8_t* packed_value) {
+    if (UNLIKELY(_reader == nullptr)) {
+        throw CLuceneError(CL_ERR_NullPointer, "bkd index reader is null", false);
+    }
+    DORIS_CHECK(_reader->num_data_dims_ == 1);
+    if (std::memcmp(packed_value, (const uint8_t*)query_max.c_str(), _reader->bytes_per_dim_) > 0) {
+        return 1;
+    }
+    if (std::memcmp(packed_value, (const uint8_t*)query_min.c_str(), _reader->bytes_per_dim_) < 0) {
+        return -1;
+    }
+    return 0;
+}
+
 template <InvertedIndexQueryType QT>
 void InvertedIndexVisitor<QT>::visit(std::vector<char>& doc_id,
                                      std::vector<uint8_t>& packed_value) {
@@ -1221,5 +1277,6 @@ template class InvertedIndexVisitor<InvertedIndexQueryType::EQUAL_QUERY>;
 template class InvertedIndexVisitor<InvertedIndexQueryType::LESS_EQUAL_QUERY>;
 template class InvertedIndexVisitor<InvertedIndexQueryType::GREATER_THAN_QUERY>;
 template class InvertedIndexVisitor<InvertedIndexQueryType::GREATER_EQUAL_QUERY>;
+template class InvertedIndexVisitor<InvertedIndexQueryType::BETWEEN_QUERY>;
 
 } // namespace doris::segment_v2

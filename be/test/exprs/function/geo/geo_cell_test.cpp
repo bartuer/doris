@@ -159,12 +159,13 @@ public:
         auto* p = std::get<segment_v2::InvertedIndexParam*>(param);
         all_skip_try = all_skip_try && p->skip_try;
         ++queries;
-        const int64_t value = p->query_value.get<TYPE_BIGINT>();
+        // s2_covers issues closed-interval BETWEEN queries {lo, hi}.
+        EXPECT_EQ(p->query_type, segment_v2::InvertedIndexQueryType::BETWEEN_QUERY);
+        const auto& range = p->query_value.get<TYPE_ARRAY>();
+        const int64_t lo = range[0].get<TYPE_BIGINT>();
+        const int64_t hi = range[1].get<TYPE_BIGINT>();
         for (uint32_t row = 0; row < _cells.size(); ++row) {
-            bool hit = p->query_type == segment_v2::InvertedIndexQueryType::GREATER_EQUAL_QUERY
-                               ? _cells[row] >= value
-                               : _cells[row] <= value;
-            if (hit) {
+            if (_cells[row] >= lo && _cells[row] <= hi) {
                 p->roaring->add(row);
             }
         }

@@ -551,6 +551,34 @@ TEST_F(SniiBkdAdapterTest, ReaderAnswersComparisonPredicates) {
     }
 }
 
+// BETWEEN_QUERY {lo, hi}: one closed-interval traversal (the geo index's cover
+// ranges), equal to a scan, including negative and single-value intervals.
+TEST_F(SniiBkdAdapterTest, ReaderAnswersClosedBetween) {
+    const std::vector<Row> rows = sample_rows(3000, 500);
+    const std::string path = test_path("read_between");
+    write_segment(path, _meta, rows);
+
+    QueryContextFixture fixture;
+    auto reader = SniiBkdIndexReader::create_shared(&_meta, open_file_reader(path));
+    const std::vector<std::pair<int64_t, int64_t>> intervals = {
+            {-400, 250}, {17, 17}, {-600, -300}, {600, 900}, {250, 249}};
+    for (const auto& [lo, hi] : intervals) {
+        SCOPED_TRACE("between " + std::to_string(lo) + " and " + std::to_string(hi));
+        auto bitmap = std::make_shared<roaring::Roaring>();
+        assert_ok(reader->query(
+                fixture.context(), "c1",
+                Field::create_field<TYPE_ARRAY>(Array {int64_field(lo), int64_field(hi)}),
+                InvertedIndexQueryType::BETWEEN_QUERY, bitmap));
+        roaring::Roaring expected;
+        for (uint32_t rid = 0; rid < rows.size(); ++rid) {
+            if (!rows[rid].is_null && rows[rid].value >= lo && rows[rid].value <= hi) {
+                expected.add(rid);
+            }
+        }
+        EXPECT_TRUE(*bitmap == expected);
+    }
+}
+
 // A query shape the BKD cannot answer must be REFUSED, not approximated: the
 // caller keeps the predicate and evaluates it normally.
 TEST_F(SniiBkdAdapterTest, ReaderRefusesUnsupportedQueryTypes) {

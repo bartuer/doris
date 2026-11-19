@@ -179,27 +179,23 @@ public:
         const auto& [column_name, column_type] = data_type_with_names[0];
         auto rows = std::make_shared<roaring::Roaring>();
         for (const auto& range : ranges) {
-            auto query = [&](segment_v2::InvertedIndexQueryType type, int64_t value) {
-                segment_v2::InvertedIndexParam param;
-                param.column_name = column_name;
-                param.column_type = column_type;
-                param.query_type = type;
-                param.query_value = Field::create_field<TYPE_BIGINT>(value);
-                param.num_rows = num_rows;
-                param.roaring = std::make_shared<roaring::Roaring>();
-                // Never bypass: a polygon's cover ranges are narrow by construction, and
-                // the per-query hit-count guess (inverted_index_skip_threshold) would
-                // otherwise drop the index (fix.archive/01.geo.index.reuse.md).
-                param.skip_try = true;
-                return std::make_pair(iter->read_from_index(&param), param.roaring);
-            };
-            auto [lo_status, at_least] =
-                    query(segment_v2::InvertedIndexQueryType::GREATER_EQUAL_QUERY, range.lo);
-            RETURN_IF_ERROR(lo_status);
-            auto [hi_status, at_most] =
-                    query(segment_v2::InvertedIndexQueryType::LESS_EQUAL_QUERY, range.hi);
-            RETURN_IF_ERROR(hi_status);
-            *rows |= *at_least & *at_most;
+            // One closed-interval BKD traversal per range (BETWEEN_QUERY): it reads
+            // only the leaves inside [lo, hi], not half the segment per bound.
+            segment_v2::InvertedIndexParam param;
+            param.column_name = column_name;
+            param.column_type = column_type;
+            param.query_type = segment_v2::InvertedIndexQueryType::BETWEEN_QUERY;
+            param.query_value = Field::create_field<TYPE_ARRAY>(
+                    Array {Field::create_field<TYPE_BIGINT>(range.lo),
+                           Field::create_field<TYPE_BIGINT>(range.hi)});
+            param.num_rows = num_rows;
+            param.roaring = std::make_shared<roaring::Roaring>();
+            // Never bypass: cover ranges are narrow by construction, and the per-query
+            // hit-count guess (inverted_index_skip_threshold) would otherwise drop
+            // the index (fix.archive/01.geo.index.reuse.md).
+            param.skip_try = true;
+            RETURN_IF_ERROR(iter->read_from_index(&param));
+            *rows |= *param.roaring;
         }
         segment_v2::InvertedIndexResultBitmap result(rows, nullptr);
         result.set_approximate(true);

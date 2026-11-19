@@ -85,6 +85,10 @@ enum class InvertedIndexQueryType {
     SEARCH_DSL_QUERY = 15,
     LIKE_GRAM_QUERY = 16,
     REGEXP_GRAM_QUERY = 17,
+    // Closed interval [lo, hi] on a BKD (numeric) index in ONE traversal; the query
+    // value is a TYPE_ARRAY Field {lo, hi}.  Used by s2_covers (geo index), where a
+    // pair of one-sided queries would each read about half the segment.
+    BETWEEN_QUERY = 18,
 };
 
 inline bool is_equal_query(InvertedIndexQueryType query_type) {
@@ -178,6 +182,9 @@ inline std::string query_type_to_string(InvertedIndexQueryType query_type) {
     }
     case InvertedIndexQueryType::REGEXP_GRAM_QUERY: {
         return "REGEXP_GRAM";
+    }
+    case InvertedIndexQueryType::BETWEEN_QUERY: {
+        return "BETWEEN";
     }
     default:
         return "";

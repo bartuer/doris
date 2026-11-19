@@ -123,17 +123,30 @@ Status SniiBkdIndexReader::query(const IndexQueryContextPtr& context,
     RETURN_IF_ERROR(_get_searcher(context, &searcher_cache_handle, &uncached, &searcher));
 
     std::string query_str;
-    RETURN_IF_ERROR(_encode_query_value(*searcher, query_value, &query_str));
-
-    // The interval is resolved BEFORE the query cache is consulted: an
-    // unsupported shape must be refused, not answered from a cache entry some
-    // other predicate left behind under the same key.
+    std::string upper_str;
+    std::string cache_str;
     BkdQueryBounds bounds;
-    RETURN_IF_ERROR(build_bkd_query_bounds(query_type, slice_of(query_str), &bounds));
+    if (query_type == InvertedIndexQueryType::BETWEEN_QUERY) {
+        // Closed [lo, hi] in one traversal.  The bounds slice query_str / upper_str,
+        // so the cache key (both bounds) is built in its own string.
+        const auto& range = query_value.get<TYPE_ARRAY>();
+        DORIS_CHECK(range.size() == 2);
+        RETURN_IF_ERROR(_encode_query_value(*searcher, range[0], &query_str));
+        RETURN_IF_ERROR(_encode_query_value(*searcher, range[1], &upper_str));
+        bounds = BkdQueryBounds {slice_of(query_str), true, slice_of(upper_str), true};
+        cache_str = query_str + upper_str;
+    } else {
+        RETURN_IF_ERROR(_encode_query_value(*searcher, query_value, &query_str));
+        // The interval is resolved BEFORE the query cache is consulted: an
+        // unsupported shape must be refused, not answered from a cache entry some
+        // other predicate left behind under the same key.
+        RETURN_IF_ERROR(build_bkd_query_bounds(query_type, slice_of(query_str), &bounds));
+        cache_str = query_str;
+    }
 
     auto index_file_key = _index_file_reader->get_index_file_cache_key(&_index_meta);
     InvertedIndexQueryCache::CacheKey cache_key {index_file_key, column_name, query_type,
-                                                 query_str};
+                                                 cache_str};
     auto* cache = InvertedIndexQueryCache::instance();
     InvertedIndexQueryCacheHandle cache_handler;
     if (handle_query_cache(context, cache, cache_key, &cache_handler, bit_map)) {

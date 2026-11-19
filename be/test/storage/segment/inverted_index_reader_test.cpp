@@ -4034,6 +4034,57 @@ public:
         EXPECT_TRUE(status.ok());
     }
 
+    // BETWEEN_QUERY {lo, hi} on the CLucene BKD (V1/V2 format): closed interval in one
+    // traversal, equal to a scan; also the try_query count path.
+    void test_bkd_between_query() {
+        std::vector<int32_t> values = {-30, -5, 0, 1, 5, 10, 15, 20, 25, 30, 30, 99};
+        TabletIndex idx_meta;
+        std::string index_path_prefix;
+        prepare_bkd_index("test_bkd_between", 0, values, &idx_meta, &index_path_prefix);
+
+        OlapReaderStatistics stats;
+        RuntimeState runtime_state;
+        TQueryOptions query_options;
+        query_options.enable_inverted_index_searcher_cache = false;
+        runtime_state.set_query_options(query_options);
+        io::IOContext io_ctx;
+        IndexQueryContextPtr context = std::make_shared<IndexQueryContext>();
+        context->io_ctx = &io_ctx;
+        context->stats = &stats;
+        context->runtime_state = &runtime_state;
+
+        auto reader = std::make_shared<IndexFileReader>(
+                io::global_local_filesystem(), index_path_prefix, InvertedIndexStorageFormatPB::V2);
+        ASSERT_TRUE(reader->init().ok());
+        auto bkd_reader = BkdIndexReader::create_shared(&idx_meta, reader);
+
+        const std::vector<std::pair<int32_t, int32_t>> intervals = {
+                {-5, 15}, {15, 15}, {-100, -10}, {30, 30}, {31, 98}, {-30, 99}, {20, 10}};
+        for (const auto& [lo, hi] : intervals) {
+            SCOPED_TRACE("between " + std::to_string(lo) + " and " + std::to_string(hi));
+            Field range = Field::create_field<TYPE_ARRAY>(
+                    Array {Field::create_field<TYPE_INT>(lo), Field::create_field<TYPE_INT>(hi)});
+            auto bitmap = std::make_shared<roaring::Roaring>();
+            ASSERT_TRUE(bkd_reader
+                                ->query(context, "c1", range, InvertedIndexQueryType::BETWEEN_QUERY,
+                                        bitmap)
+                                .ok());
+            roaring::Roaring expected;
+            for (uint32_t rid = 0; rid < values.size(); ++rid) {
+                if (values[rid] >= lo && values[rid] <= hi) {
+                    expected.add(rid);
+                }
+            }
+            EXPECT_TRUE(*bitmap == expected)
+                    << bitmap->cardinality() << " vs " << expected.cardinality();
+            size_t count = 0;
+            ASSERT_TRUE(bkd_reader
+                                ->try_query(context, "c1", range,
+                                            InvertedIndexQueryType::BETWEEN_QUERY, &count)
+                                .ok());
+        }
+    }
+
     // Test InvertedIndexIterator uncovered paths
     void test_iterator_uncovered_paths() {
         std::string_view rowset_id = "test_iterator_uncovered";
@@ -4765,6 +4816,10 @@ TEST_F(InvertedIndexReaderTest, NullBitmapRead) {
 }
 
 // BKD index reading test
+TEST_F(InvertedIndexReaderTest, BkdBetweenQuery) {
+    test_bkd_between_query();
+}
+
 TEST_F(InvertedIndexReaderTest, BkdIndexRead) {
     test_bkd_index_read();
 }

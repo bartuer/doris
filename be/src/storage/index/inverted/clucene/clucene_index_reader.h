@@ -181,6 +181,8 @@ public:
     Status get_bkd_reader(const IndexQueryContextPtr& context, BKDIndexSearcherPtr& reader);
 
 private:
+    Status encode_bkd_cache_key(const Field& query_value, InvertedIndexQueryType query_type,
+                                std::string* out);
     FieldType _type = FieldType::OLAP_FIELD_TYPE_NONE;
     const KeyCoder* _value_key_coder {};
 };
