@@ -81,6 +81,16 @@ if(GEO_STANDALONE)
     include(GoogleTest)
     gtest_discover_tests(geo_index_core_test)
 
+    # Perf (plan 02 P.1): optional, built when Google Benchmark is installed.
+    find_package(benchmark QUIET)
+    if(benchmark_FOUND)
+        add_executable(geo_index_core_bench test/bench_cover.cpp)
+        target_compile_options(geo_index_core_bench PRIVATE -Wall -Wextra -Werror)
+        target_compile_definitions(geo_index_core_bench PRIVATE
+            GEO_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data")
+        target_link_libraries(geo_index_core_bench PRIVATE geo_index_core benchmark::benchmark)
+    endif()
+
     # Own binary: it interposes glibc malloc & co. to count allocations, which
     # clashes with ASan's own interceptors -> plain Linux builds only (run_tests.sh
     # runs it in the valgrind pass).

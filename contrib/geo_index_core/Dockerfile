@@ -22,7 +22,7 @@
 FROM ubuntu:24.04
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       cmake g++ make libs2-dev libgtest-dev valgrind python3 \
+       cmake g++ make libs2-dev libgtest-dev libbenchmark-dev valgrind python3 \
     && rm -rf /var/lib/apt/lists/*
 ENV BUILD_ROOT=/tmp/build
 WORKDIR /src

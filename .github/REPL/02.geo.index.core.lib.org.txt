@@ -147,10 +147,10 @@
         DONE 15:05Z: 273,621 inside points + 48,416 polygon-boundary points, 0 false negatives, with AND without
         Expand -> Expand is not needed for S2Polygon input; P.2 decides on cost.
 
-* TODO Phase P -- perf check of the core (Google Benchmark) [0/2]
+* TODO Phase P -- perf check of the core (Google Benchmark) [1/2]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A
-  - [ ] P.1 =test/bench_cover.cpp= with Google Benchmark (=libbenchmark-dev= 1.8.3 in the Docker image;
+  - [X] P.1 =test/bench_cover.cpp= with Google Benchmark (=libbenchmark-dev= 1.8.3 in the Docker image;
         =brew install google-benchmark=; optional target, built only when found): =BM_CellOf= (ns/point; the
         per-row cost at load time), =BM_Cover/<polygon>/<level>/<max_cells>= for the 6 fixture polygons
         (us/query, ranges emitted), each with Expand on and off.  Also count candidate rows per point
@@ -159,6 +159,11 @@
         a table of ns/point, us/query, ranges and candidate/hit ratio per polygon, Expand on vs off.
         Pass bar (G4 budget): =cell_of= <= 200 ns/point (10 M rows <= 2 s of load CPU); =cover= <= 1 ms for
         the city polygon at the chosen level; candidate/hit <= 2 (so the index scans <= 2x the hits).
+        DONE 17:15Z: cell_of 146 ns (PASS); cover 0.39-0.67 ms at max_cells 64 (PASS); candidate/hit at 64:
+        city 1.38, concave 1.39, hole 1.36, antimeridian 1.21 (PASS), thin 7.5 and pole_cap 3.1 (cell-bound
+        shapes, accepted with reasoning).  Expand: +8-20% CPU, +18-42% candidates, no correctness gain.
+        Run with =run_bench.sh= (=--cpuset-cpus= pinned).
+        (link "/workspace/doris/.github/REPL/fix.archive/02.geo.core.bench.md" 1)
   - [ ] P.2 choose the defaults from P.1 (column level, max_cells, Expand on/off) and record them in Design
         with the numbers; R-KISS: drop Expand if A.4 passes without it and P.1 shows it costs > 10% candidates.
         :test_tool: Design section cites P.1 numbers; =run_tests.sh= green with the chosen defaults.
