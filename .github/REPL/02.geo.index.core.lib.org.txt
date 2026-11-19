@@ -219,6 +219,10 @@
   - [ ] Z.4 in-BE perf: the P.1 numbers inside doris_be (RELEASE): load 10 M rows with the generated cell column
         vs without (plan 01 B.2 table) -> load-time overhead; cover() time from the query Profile.
         :test_tool: fix.archive/02.geo.core.bench.md gains an "inside Doris" table; load overhead <= 10%.
+        MEASURED 22:25Z: s2_cell column +16% load (bar 10%: MISSED by 6 pts); + inverted index +92%, identical to an
+        inverted index on any BIGINT column (+91%).  Item stays [ ]: either accept 16% (the cell costs 19 ns/row in
+        the pipeline) or cut cell_of: S2LatLng -> S2Point -> face/ij -> id does trig; a direct lat/lng -> face-ij path
+        (S2 =S2CellId::FromFaceIJ= after projecting once) may halve it.  :recommend: accept, the index cost dominates.
   - [ ] Z.2 hand off to plan 01 Phase C.3: generated column =cell BIGINT AS (s2_cell(lon, lat))= + numeric inverted
         index; planner rewrite of =ST_Contains(<const polygon>, ST_Point(lon, lat))= into =cover()= ranges + recheck.
         :test_tool: plan 01 C.3 / Z.2 test tools.
