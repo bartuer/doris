@@ -14,6 +14,10 @@
   Doris' own dev skills: doris-skills/skills/develop-with-evidence/SKILL.md
   (=git submodule update --init -- doris-skills= when a work item first needs it).
 
+  Plan-doc language rule (owner, 2026-11-19T11:59Z, translated): every plan doc and fix.archive note in this
+  repo is written entirely in English -- no Chinese mixed in.  Chinese user quotes are recorded translated,
+  marked "(translated from Chinese)".
+
 * Execution environment
   This plan runs on a multi-machine environment described in:
 
@@ -22,12 +26,12 @@
   Read it before executing.  Where it defines parallelism, it
   outranks subagent fan-out.  This plan does not restate it.
 
-* USER VERBATIM 2026-11-19T11:53Z (Feishu group oc_08aa.., owner)
-  - "doris是rust实现的，用c或者rust实现一个地理空间索引，作为plugin或者addon加入到doris里面，选择一个机器，
-     比如c05，clone doris 的repo到 workspace，建立.github/REPL/fix，archive，/org_plan
-     01.geo.index.doris.align.ES.interface.org.txt，另外创建一个新的CLI session doris_geo_index 还有room doris在tmux，
-     /kiss！/frontier，设置好开发环境以后，汇报。"
-  - context (same chat, 10:04Z-11:24Z): chaochao asked what ES =geo_polygon= is, whether it is indexed, and how to make
+* USER VERBATIM 2026-11-19T11:53Z (Feishu group oc_08aa.., owner; translated from Chinese)
+  - "Doris is implemented in Rust; implement a geospatial index in C or Rust and add it to Doris as a plugin or
+     addon.  Pick a machine, e.g. c05, clone the doris repo to workspace, create .github/REPL/fix.archive,
+     /org_plan 01.geo.index.doris.align.ES.interface.org.txt, and also create a new CLI session doris_geo_index and
+     a room doris in tmux.  /kiss! /frontier.  Report after the dev environment is set up."
+  - context (same chat, 10:04Z-11:24Z): chaochao asked what ES geo_polygon is, whether it is indexed, and how to make
     the same query fast in Doris.  Answer given: ES = geo_point + BKD; Doris 3.x has no spatial index
     (prefix / inverted / bloom / ngram / zonemap only) -> bbox prefilter + ST_Contains, geohash/H3 sort key.
 
@@ -37,7 +41,7 @@
   - c05 (CPC-bazho-42YC9, odsp): 32 cores (avx2), 94 GB RAM (87 avail), /workspace 507 GB free, docker 29.8.1.
     10 tmux sessions already (c05_*_*, rdp-tunnels, sentinel-odsp-b) -- this plan adds one: =doris_geo_index=.
   - Language facts (GitHub languages API + tree): Doris FE = Java, BE = C++ (C++ ~77.5 MB, Java ~85.8 MB, C 0.35 MB);
-    there is no Rust in Doris.  The user's "doris是rust实现的" is corrected here: the index is C++ in the BE.
+    there is no Rust in Doris.  The user's claim "Doris is implemented in Rust" is corrected here: the index is C++ in the BE.
   - =apache/doris= master cloned to =c05:/workspace/doris= (blobless, =dbb9b19391= 2026-11-19).
   - What Doris already has that a geo index can reuse (read in the tree, not guessed):
     - BKD tree: =be/src/storage/index/inverted/snii/bkd/= (bkd_builder, bkd_reader, point_sorter, leaf_codec)
