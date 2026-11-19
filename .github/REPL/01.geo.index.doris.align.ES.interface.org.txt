@@ -67,15 +67,24 @@
       no storage-index plugin SPI.  A new index type is in-tree BE code + FE DDL, not a loadable plugin.
   - Build env: =apache/doris:build-env-ldb-toolchain-latest= (Docker Hub, the master toolchain) pulled on c05.
 
-* Goal [2/4]
-  - [ ] G1 A spatial index on a lat/lon (or POINT) column in Doris BE, built per segment at load time,
+* Goal [4/4]
+  - [X] G1 A spatial index on a lat/lon (or POINT) column in Doris BE, built per segment at load time,
         that answers "point within polygon" by visiting only the leaf blocks the polygon's cells cover.
+        DONE: Phase C -- generated =s2_cell= column + stock BKD inverted index built per segment at load (C.1);
+        =s2_covers= reads only the BKD leaves inside each cover range via BETWEEN_QUERY (C.3a/C.4); Z.2 profile check
+        RowsInvertedIndexFiltered > 0.
   - [X] G2 ES-aligned interface: the ES =geo_polygon= / =geo_shape within= query shape maps 1:1 to Doris SQL
         (one documented table of ES DSL -> Doris SQL, incl. lat/lon order and closed-ring rules).
   - [X] G3 Correct: on a fixed dataset the indexed query returns exactly the rows =ST_Contains= returns
         with the index disabled (diff = 0), incl. boundary points, antimeridian, empty and NULL.
-  - [ ] G4 Fast: on >= 100 M points a city-sized polygon scans <= 5% of rows (Profile =RowsInvertedIndexFiltered=
-        or the new counter) and wall time beats the bbox-prefilter baseline by >= 3x.
+  - [X] G4 Fast: on >= 100 M points a city-sized polygon scans <= 5% of rows (Profile =RowsInvertedIndexFiltered=
+        or the new counter) AND its wall time is faster than the bbox-prefilter baseline, while returning exactly the
+        =ST_Contains= rows (the planar bbox prefilter does not).
+        :USER_VERBATIM_2026-11-19: (owner, Feishu 23:33Z, translated from Chinese) "a 3x-faster target is not
+        reasonable; just being faster is enough."  Replaces the earlier ">= 3x vs bbox" bar (hitl 20c5dd answered).
+        DONE (fix.archive/01.geo.bench.md, 100 M rows, cell-sorted table of Z.3b): city scans 3.33% of rows; 204 ms vs
+        bbox 274 ms (1.34x) and vs full ST_Contains 2,033 ms (10x); exact 2,728,757 hits vs the bbox's 2,727,994 (763
+        geodesic hits lost).  Also faster on thin (199 vs 1,515 ms, 7.6x).  Concave (not city-sized, U-shaped) 607 vs 727 ms.
 
 * Dependencies
   - [X] D1 Doris source on c05: =/workspace/doris= (master =dbb9b19391=).
@@ -243,7 +252,7 @@
         on 10 M rows: city 180 -> 48-58 ms, thin 215 -> 55-59, concave 203 -> 96, hits identical.
         :audit: code-review/gpt-6-astra r4: 2 HIGH, 2 fixed (fix.archive/02.audit.be-adapter.md)
 
-* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [3/7]
+* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [4/7]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,B,C
   - [X] Z.1 ES -> Doris mapping table (G2) in =fix.archive/01.geo.es.mapping.md=.
@@ -259,7 +268,7 @@
         EXPLAIN shows s2_covers; profile asserts RowsInvertedIndexFiltered > 0 (negative control: index off -> FAIL).
         =./run-regression-test.sh --run -d geo_index_p0 -s test_geo_index=: "All suites success".
         :audit: code-review/gpt-6-astra r5: 1 MEDIUM fixed (fix.archive/02.audit.be-adapter.md)
-  - [ ] Z.3 100 M points, the 3 polygons: rows scanned <= 5%, >= 3x vs bbox baseline (G4)
+  - [X] Z.3 100 M points, the 3 polygons: rows scanned <= 5%, faster than the bbox baseline (G4, restated 23:33Z)
         -> =fix.archive/01.geo.bench.md=.
         MEASURED 21:55Z: city scans 3.33% (PASS), 7.5x vs full ST_Contains, but 1.0x vs the planar bbox (FAIL the 3x
         bar; the bbox also loses 763 geodesic hits).  thin 4.8x vs bbox, concave 0.9x.  Profile: for a compact polygon
@@ -269,7 +278,9 @@
         :recommend: keep the bar and do Z.3a first (reversible, measurable).
         :interrupt_TAKEN_AND_CLOSED: 21:58Z by the exec_plan ladder rung 3 (:recommend:): bar kept; Z.3b first (DDL only,
         cheapest to measure), then Z.3a.  Owner can restate G4 later; nothing irreversible is decided here.
-  - [ ] Z.3a interior cover: =cover()= also returns the interior covering (S2 =GetInteriorCovering=); rows whose cell is
+        :USER_VERBATIM_2026-11-19: owner 23:33Z restated G4 -- "just faster" than the bbox (see Goal G4).  DONE with the
+        Z.3b numbers: city 3.33% rows, 204 vs 274 ms, exact hits.  Z.3a becomes optional.
+  - [ ] Z.3a (OPTIONAL since 23:33Z, not needed for G4) interior cover: =cover()= also returns the interior covering (S2 =GetInteriorCovering=); rows whose cell is
         in an interior range skip ST_Contains (=s2_covers= returns a 2-level answer, or a second predicate
         =s2_within_interior=).  Expected: ~0 rechecks for the city's interior hits.
         :test_tool: plan 02 property tests extended (interior cell => every point inside); cluster: city <= 1/3 of bbox ms.
