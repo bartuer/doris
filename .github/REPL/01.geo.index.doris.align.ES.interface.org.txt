@@ -67,7 +67,7 @@
       no storage-index plugin SPI.  A new index type is in-tree BE code + FE DDL, not a loadable plugin.
   - Build env: =apache/doris:build-env-ldb-toolchain-latest= (Docker Hub, the master toolchain) pulled on c05.
 
-* Goal [0/4]
+* Goal [1/4]
   - [ ] G1 A spatial index on a lat/lon (or POINT) column in Doris BE, built per segment at load time,
         that answers "point within polygon" by visiting only the leaf blocks the polygon's cells cover.
   - [X] G2 ES-aligned interface: the ES =geo_polygon= / =geo_shape within= query shape maps 1:1 to Doris SQL
