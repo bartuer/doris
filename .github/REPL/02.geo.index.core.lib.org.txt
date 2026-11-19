@@ -46,12 +46,15 @@
   - BE UT discovery is glob-based (=be/test/CMakeLists.txt= =GLOB_RECURSE= over =storage/*.cpp=, =exprs/*.cpp=):
     a test file in the right dir is picked up with no CMake edit.
 
-* Goal [0/4]
+* Goal [0/5]
   - [ ] G1 A standalone C++17 library =geo_index_core= (no Doris headers): point -> cell id; polygon -> sorted
         disjoint cell-id ranges that cover it (superset; the exact recheck is Doris' own ST_Contains).  Only dependency: S2 (+ gtest for tests).
-  - [ ] G2 Memory-clean: core unit tests pass under ASan+UBSan and under valgrind (0 errors, 0 leaks).
+  - [ ] G2 Memory-clean: core unit tests pass under ASan+UBSan and under valgrind (0 errors, 0 leaks), and
+        inside doris_be under Doris' ASAN and LSAN BE UT builds, with allocations charged to the query tracker.
   - [ ] G3 One-command local test on Linux and macOS (=contrib/geo_index_core/run_tests.sh=), and the same in a
         checked-in Docker image (reference env).
+  - [ ] G5 Fast: =cell_of= <= 200 ns/point, =cover= <= 1 ms per query, candidate/hit <= 2 (P.1); load
+        overhead of the cell column <= 10% inside Doris (Z.4).
   - [ ] G4 Checked-in test data (points, polygons incl. antimeridian / pole / concave / hole / boundary, expected
         hits) + generator script; core correctness = 0 false negatives of the cover vs S2Polygon::Contains
         (boundary points: cover must include them too).  Exact SQL equality is plan 01 Z.2.
@@ -103,7 +106,7 @@
     plugin .so (AGENTS.md forbids dynamic load; F2 = directory + adapter).
   - :interrupt: none -- every choice is measured above or reversible (one directory).
 
-* TODO Phase A -- core library + checked-in tests + memcheck [0/3]
+* TODO Phase A -- core library + checked-in tests + memcheck [0/5]
   :needs: {"tier":"wsl","box":"c05"}
   - [ ] A.1 =contrib/geo_index_core/= skeleton: CMakeLists (C++17, =-Wall -Wextra -Werror=, options
         =GEO_ASAN=, =GEO_UBSAN=), =cell.h/.cpp= (=cell_of=), =cell_test.cpp=: known lat/lon -> known id,
@@ -124,6 +127,34 @@
         =expected.csv= (polygon id, point id) from brute force.  Total <= 1 MB.
         :test_tool: =run_tests.sh= green; =du -sh test/data= <= 1M; regenerating gives an identical =git diff=.
 
+  - [ ] A.5 zero-allocation check for =cell_of= (the per-row path at load time): =test/alloc_test.cpp= replaces
+        global =operator new= with a counting one; 1 M =cell_of= calls -> 0 allocations.  Allocator-agnostic
+        (works on glibc malloc, jemalloc, macOS), so no jemalloc dependency in the core.
+        :test_tool: =run_tests.sh= green.
+  - [ ] A.4 property test (closes the open question in fix.archive/02.audit.core.md #1): checked-in
+        =test/property_test.cpp=, fixed seed: 300 random polygons (convex, concave, with hole, antimeridian,
+        pole) x levels {8,12,16,20} x max_cells {8,64}; probe points = every covering cell's vertices + edge
+        midpoints + 1 k random points per polygon; assert =polygon.Contains(p) => in_ranges(cell_of(p))=.
+        Run it with and without =Expand= (CMake option =GEO_COVER_EXPAND=, default ON) -- recorded, not asserted.
+        :test_tool: =run_tests.sh= green (ASan+UBSan and valgrind), property test runtime <= 30 s under valgrind.
+        :audit: round 2 of fix.archive/02.audit.core.md (gpt-6-astra).
+
+* TODO Phase P -- perf check of the core (Google Benchmark) [0/2]
+  :needs: {"tier":"wsl","box":"c05"}
+  :after: A
+  - [ ] P.1 =test/bench_cover.cpp= with Google Benchmark (=libbenchmark-dev= 1.8.3 in the Docker image;
+        =brew install google-benchmark=; optional target, built only when found): =BM_CellOf= (ns/point; the
+        per-row cost at load time), =BM_Cover/<polygon>/<level>/<max_cells>= for the 6 fixture polygons
+        (us/query, ranges emitted), each with Expand on and off.  Also count candidate rows per point
+        fixture (= false-positive rate of the cover).
+        :test_tool: =build/plain/geo_index_core_bench --benchmark_format=json= -> fix.archive/02.geo.core.bench.md:
+        a table of ns/point, us/query, ranges and candidate/hit ratio per polygon, Expand on vs off.
+        Pass bar (G4 budget): =cell_of= <= 200 ns/point (10 M rows <= 2 s of load CPU); =cover= <= 1 ms for
+        the city polygon at the chosen level; candidate/hit <= 2 (so the index scans <= 2x the hits).
+  - [ ] P.2 choose the defaults from P.1 (column level, max_cells, Expand on/off) and record them in Design
+        with the numbers; R-KISS: drop Expand if A.4 passes without it and P.1 shows it costs > 10% candidates.
+        :test_tool: Design section cites P.1 numbers; =run_tests.sh= green with the chosen defaults.
+
 * TODO Phase B -- reference env: Docker image + macOS [0/2]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A
@@ -134,9 +165,9 @@
         macOS), keeps ASan+UBSan.  S2 0.14 vs 0.10: only API used must exist in both (checked by building against both).
         :test_tool: on a macOS box (or GitHub Actions =macos-14= in the fork): =run_tests.sh= exit 0.
 
-* TODO Phase Z -- integrate into Doris (adapter, master) [0/2]
+* TODO Phase Z -- integrate into Doris (adapter, master) [0/4]
   :needs: {"tier":"wsl","box":"c05"}
-  :after: A,B
+  :after: A,P,B
   - [ ] Z.1 BE adapter: =be/src/exprs/function/geo/functions_geo_cell.cpp= registers scalar =s2_cell(lon, lat[, level])=
         (calls =cell_of=) + BE UT =be/test/exprs/function/geo/geo_cell_test.cpp= reusing A.3 fixtures.
         The core joins the BE build with =add_subdirectory(contrib/geo_index_core)= +
@@ -144,6 +175,27 @@
         no file copied into =be/src=.  cover() is called with the S2Polygon Doris already parsed (=GeoPolygon=).  :kiss: <record>
         :test_tool: =./run-be-ut.sh --run --filter=GeoCell*= green (ASAN build).
         :audit: <record>
+  - [ ] Z.3 in-BE memory check (the core runs INSIDE doris_be, statically linked C++; no JVM/JNI boundary):
+        (a) ASAN BE UT: the Z.1 test under Doris' own =BUILD_TYPE=ASAN= (=CXX_FLAGS_ASAN=, ldb clang).  Watch
+            for the absl btree layout mismatch seen standalone (fix.archive/02.audit.core.md #3): if Doris'
+            thirdparty S2/absl are not ASan-built, clang + ASan flips absl's btree layout in our TU only.
+            Must pass with no "invalidated iterator" abort and no ASan report.
+        (b) LSAN: =run-be-ut.sh= under =BUILD_TYPE=LSAN= for =GeoCell*=: 0 leaks.
+        (c) memory accounting (MEASURED 14:50Z in the tree): plain =malloc=/=new= in doris_be is routed to jemalloc
+            (=be/src/runtime/memory/jemalloc_hook.cpp= aliases malloc -> =doris_malloc= -> =jemalloc=), but it is
+            NOT charged to the query's mem tracker; only Doris' =Allocator= (=be/src/core/allocator.cpp:256=) and
+            explicit =CONSUME_THREAD_MEM_TRACKER= calls are.  So S2's allocations in cover() count in the
+            process total only, exactly like =st_contains= / =st_polygon= today (=geo_types.cpp= uses plain
+            =new S2Loop=).  Acceptable because cover() is once per query and bounded: <= max_cells cells ->
+            <= 36 * max_cells ranges (P.1 measures the bytes).  No tracker code.
+            kiss: untracked; upgrade to CONSUME_THREAD_MEM_TRACKER when P.1 shows cover() > 1 MB per query.
+            jemalloc is NOT required: ON by default on Linux, OFF for =BUILD_TYPE=ASAN= and macOS (=build.sh=).
+            The core uses only std allocation, so it is allocator-agnostic; the ASAN UT runs it on glibc malloc.
+        :test_tool: =./run-be-ut.sh --run --filter=GeoCell*= green under ASAN and LSAN.
+        :audit: gpt-6-astra, write-up fix.archive/02.audit.be-adapter.md.
+  - [ ] Z.4 in-BE perf: the P.1 numbers inside doris_be (RELEASE): load 10 M rows with the generated cell column
+        vs without (plan 01 B.2 table) -> load-time overhead; cover() time from the query Profile.
+        :test_tool: fix.archive/02.geo.core.bench.md gains an "inside Doris" table; load overhead <= 10%.
   - [ ] Z.2 hand off to plan 01 Phase C.3: generated column =cell BIGINT AS (s2_cell(lon, lat))= + numeric inverted
         index; planner rewrite of =ST_Contains(<const polygon>, ST_Point(lon, lat))= into =cover()= ranges + recheck.
         :test_tool: plan 01 C.3 / Z.2 test tools.

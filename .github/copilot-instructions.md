@@ -30,7 +30,11 @@ prints nothing.
   `task(agent_type="code-review", model="gpt-6-astra")`.  Never type a model id from memory: when a
   listed id returns 400, take the closest id from the tool's "Available:" list and record the substitution.
 - The author fixes or answers every finding.  Record the result under the item as
-  `:audit: <agent>/<model> <n findings, n fixed, n rejected + why>`.
+  `:audit: <agent>/<model> <n findings, n fixed, n rejected + why>`, linking the write-up below.
+- Every audit gets a committed write-up `.github/REPL/fix.archive/<plan>.audit.<subject>.md`
+  (owner 2026-11-19): scope (files / commit audited), agent + model, each finding (severity, file:line,
+  evidence), the author's fix or rejection with reason, and the verification run after the fix (the
+  `:test_tool:` output).  One file per audit round; a re-audit appends a new round to the same file.
 - No `[X]` on a code item without an `:audit:` line.
 
 ## R-MEMCHECK -- C++ core is memory-clean
