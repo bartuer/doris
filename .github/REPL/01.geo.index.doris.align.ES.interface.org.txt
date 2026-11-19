@@ -1,0 +1,146 @@
+; -*- mode: Org;-*-
+
+#+TITLE: 01 geo.index.doris.align.ES.interface
+#+STARTUP: overview
+
+* Dev process setup
+  Before executing ANY work item in this plan, open and obey
+  the rules defined in this project's per-repo instructions:
+
+    - AGENTS.md  (apache/doris root; also be/src/storage/index/inverted/AGENTS.md, gensrc/AGENTS.md)
+
+  Read the current rules there and follow them.  This plan intentionally does
+  not restate any rule -- the per-repo instructions are the single source of truth.
+  Doris' own dev skills: doris-skills/skills/develop-with-evidence/SKILL.md
+  (=git submodule update --init -- doris-skills= when a work item first needs it).
+
+* Execution environment
+  This plan runs on a multi-machine environment described in:
+
+    - ${FLEET_HOME:-$HOME/.fleet}/cluster.md
+
+  Read it before executing.  Where it defines parallelism, it
+  outranks subagent fan-out.  This plan does not restate it.
+
+* USER VERBATIM 2026-11-19T11:53Z (Feishu group oc_08aa.., owner)
+  - "doris是rust实现的，用c或者rust实现一个地理空间索引，作为plugin或者addon加入到doris里面，选择一个机器，
+     比如c05，clone doris 的repo到 workspace，建立.github/REPL/fix，archive，/org_plan
+     01.geo.index.doris.align.ES.interface.org.txt，另外创建一个新的CLI session doris_geo_index 还有room doris在tmux，
+     /kiss！/frontier，设置好开发环境以后，汇报。"
+  - context (same chat, 10:04Z-11:24Z): chaochao asked what ES =geo_polygon= is, whether it is indexed, and how to make
+    the same query fast in Doris.  Answer given: ES = geo_point + BKD; Doris 3.x has no spatial index
+    (prefix / inverted / bloom / ngram / zonemap only) -> bbox prefilter + ST_Contains, geohash/H3 sort key.
+
+* MEASURED 2026-11-19T12:05Z (c16_chhk_lark, setup)
+  - =cli -r= header: "ASK 0 HITL 3 PERM 0 ERR 1 STALL 28 IDLE 30 DEAD 0 GONE 0|171 live/34 box|feed 0s".
+    No live session's WORK names doris / geo; no room named doris existed (=room rooms=).
+  - c05 (CPC-bazho-42YC9, odsp): 32 cores (avx2), 94 GB RAM (87 avail), /workspace 507 GB free, docker 29.8.1.
+    10 tmux sessions already (c05_*_*, rdp-tunnels, sentinel-odsp-b) -- this plan adds one: =doris_geo_index=.
+  - Language facts (GitHub languages API + tree): Doris FE = Java, BE = C++ (C++ ~77.5 MB, Java ~85.8 MB, C 0.35 MB);
+    there is no Rust in Doris.  The user's "doris是rust实现的" is corrected here: the index is C++ in the BE.
+  - =apache/doris= master cloned to =c05:/workspace/doris= (blobless, =dbb9b19391= 2026-11-19).
+  - What Doris already has that a geo index can reuse (read in the tree, not guessed):
+    - BKD tree: =be/src/storage/index/inverted/snii/bkd/= (bkd_builder, bkd_reader, point_sorter, leaf_codec)
+      + =snii_bkd_index_writer/reader/query= -- the numeric inverted index.  ONE dimension per point
+      (=bytes_per_dim=, value + doc id), so 2-D lat/lon is not native.
+    - Geo functions: =be/src/exprs/function/geo/= (ST_*, WKT/WKB parse, =functions_h3.cpp=: h3_lat_lng_to_cell,
+      h3_cell_to_boundary, h3_cell_to_lat_lng) and =contrib/h3= (submodule).
+    - FE: =nereids/.../scalar/StContains.java=; FE plugins (=fe_plugins/=) are audit / SQL-converter only -- there is
+      no storage-index plugin SPI.  A new index type is in-tree BE code + FE DDL, not a loadable plugin.
+  - Build env: =apache/doris:build-env-ldb-toolchain-latest= (Docker Hub, the master toolchain) pulled on c05.
+
+* Goal [0/4]
+  - [ ] G1 A spatial index on a lat/lon (or POINT) column in Doris BE, built per segment at load time,
+        that answers "point within polygon" by visiting only the leaf blocks the polygon's cells cover.
+  - [ ] G2 ES-aligned interface: the ES =geo_polygon= / =geo_shape within= query shape maps 1:1 to Doris SQL
+        (one documented table of ES DSL -> Doris SQL, incl. lat/lon order and closed-ring rules).
+  - [ ] G3 Correct: on a fixed dataset the indexed query returns exactly the rows =ST_Contains= returns
+        with the index disabled (diff = 0), incl. boundary points, antimeridian, empty and NULL.
+  - [ ] G4 Fast: on >= 100 M points a city-sized polygon scans <= 5% of rows (Profile =RowsInvertedIndexFiltered=
+        or the new counter) and wall time beats the bbox-prefilter baseline by >= 3x.
+
+* Dependencies
+  - [X] D1 Doris source on c05: =/workspace/doris= (master =dbb9b19391=).
+  - [X] D2 Build toolchain image =apache/doris:build-env-ldb-toolchain-latest= on c05.
+  - [ ] D3 Submodules the BE build needs (=contrib/clucene=, =contrib/h3=, ... per =build.sh=) -- initialised by the
+        build entry point, not by hand (AGENTS.md "Submodules").
+  - [ ] D4 thirdparty prebuilt (=thirdparty/installed=) inside the build-env image, or =build-thirdparty.sh=.
+
+* Frontier (decisions that change the plan -- ask before Phase B)
+  - :interrupt: F1 Index shape.  :recommend: (a) -- reuses the 1-D BKD and H3 that are already in the tree.
+    (a) H3 cell id (BIGINT, resolution r) as a hidden column + existing numeric BKD/inverted index on it; a polygon
+        query = =h3 polyfill= -> cell set (+ compact ranges) -> index lookup -> exact ST_Contains on candidates.
+    (b) true 2-D BKD (extend snii bkd to num_dims=2, Lucene LatLonPoint style).  Best pruning, but a new on-disk
+        format and the =gensrc= thrift/proto upgrade rule (gensrc/AGENTS.md) apply.
+    (c) No storage change: SQL rewrite rule only (bbox BETWEEN + ST_Contains) -- already possible by hand today.
+  - :interrupt: F2 "plugin / addon".  Doris has no index plugin SPI (MEASURED).  :recommend: in-tree change on a
+    fork branch =geo-index= (kept rebase-able onto master); "plugin" = a self-contained directory + one
+    registration point, not a .so loaded at runtime (AGENTS.md "Remote Artifacts and Dynamic Code Loading"
+    forbids new dynamic-load paths).
+  - :interrupt: F3 Language.  Doris BE is C++ (MEASURED, no Rust in tree).  :recommend: C++ (matches the BE, the
+    BKD and H3 code it reuses, and the build).  Rust would need a new FFI + cargo in the CMake build.
+  - :interrupt: F4 Target branch: master (4.x) vs branch-3.1 (the user's cluster runs 3.0/3.1).
+    :recommend: master for development; back-port is a separate plan.
+  - :interrupt: F5 Upstream: contribute to apache/doris (PR via doris-pr-description) or keep internal.
+
+* Context
+  - ES side to align with:
+    - =geo_point= field + BKD (Lucene LatLonPoint); =geo_polygon= deprecated since 7.12 -> =geo_shape= query with
+      GeoJSON/WKT, =relation: within|intersects|disjoint|contains=; GeoJSON order is [lon, lat].
+      https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-geo-polygon-query
+  - Doris side:
+    - index overview (no spatial index in 3.x): https://doris.apache.org/docs/3.x/table-design/index/index-overview
+    - spatial functions: https://doris.apache.org/docs/3.x/sql-manual/sql-functions/scalar-functions/spatial-functions/st-contains
+    - BE index code: =be/src/storage/index/= (inverted/, zone_map/, bloom_filter/, ann/ -- =ann= is the most
+      recent "new index type" and the closest template for registration points).
+  - Build/test entry points: =build.sh --be=, =run-be-ut.sh=, =run-fe-ut.sh=, =run-regression-test.sh=.
+
+* DONE Phase A -- dev environment on c05 [4/4]
+  :needs: {"tier":"wsl","box":"c05"}
+  - [X] A.1 clone =apache/doris= to =c05:/workspace/doris= (blobless).
+  - [X] A.2 =.github/REPL/= + =.github/REPL/fix.archive/= in the clone; this plan at =.github/REPL/01.geo.index.doris.align.ES.interface.org.txt=.
+        (local only: the clone's origin is apache/doris; no push until F5.)
+  - [X] A.3 pull =apache/doris:build-env-ldb-toolchain-latest=.
+  - [X] A.4 tmux session =doris_geo_index= (copilot CLI, cwd /workspace/doris) joined to room =doris=.
+
+* TODO Phase B -- baseline: build BE once, measure the no-index query [0/3]
+  :needs: {"tier":"wsl","box":"c05"}
+  :after: A
+  - [ ] B.1 build BE + FE in the build-env container (=./build.sh --be --fe=, output/ on the host volume).
+        :test_tool: =output/be/lib/doris_be --version= prints the master sha.
+  - [ ] B.2 single-node cluster from output/ (random ports per AGENTS.md worktree rule), table =geo_pts(id, lon, lat)=,
+        10 M synthetic points.
+  - [ ] B.3 baseline numbers: full ST_Contains scan vs bbox-prefilter + ST_Contains for 3 polygons (city, thin, concave);
+        Profile rows scanned + wall time -> =.github/REPL/fix.archive/01.geo.baseline.md=.
+        :test_tool: the md has 3 x 2 rows with rows-scanned and ms.
+
+* TODO Phase C -- the index (shape chosen at F1) [0/3]
+  :needs: {"tier":"wsl","box":"c05"}
+  :after: B
+  - [ ] C.1 writer: per segment, cells/points -> index file (reuse snii bkd builder for (a)).  BE unit test.
+        :test_tool: =./run-be-ut.sh --run --filter=GeoIndex*= green.
+  - [ ] C.2 reader + query: polygon -> cell set -> row bitmap; exact ST_Contains on the candidates only.
+        :test_tool: BE UT: 3 polygons x 10 k random points, bitmap == brute force.
+  - [ ] C.3 FE: =INDEX idx (lon, lat) USING GEO PROPERTIES("resolution"="9")= DDL + planner pushes
+        =ST_Contains(<const polygon>, ST_Point(lon, lat))= to the index.
+        :test_tool: =./run-fe-ut.sh --run <GeoIndex test>= green; EXPLAIN shows the index predicate.
+
+* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup [0/3]
+  :needs: {"tier":"wsl","box":"c05"}
+  :after: A,B,C
+  - [ ] Z.1 ES -> Doris mapping table (G2) in =fix.archive/01.geo.es.mapping.md=.
+  - [ ] Z.2 regression suite =regression-test/suites/geo_index_p0/=: indexed vs unindexed diff = 0 (G3).
+        :test_tool: =./run-regression-test.sh --run -s geo_index_p0= PASS.
+  - [ ] Z.3 100 M points, the 3 polygons: rows scanned <= 5%, >= 3x vs bbox baseline (G4)
+        -> =fix.archive/01.geo.bench.md=.
+
+* Main Loop
+  - (R) run the phase's :test_tool: in a separate shell from the build; read Profile / UT output.
+  - (E) fix in /workspace/doris on branch =geo-index=; one commit per finding.
+  - (P) re-run the :test_tool:; compare to =01.geo.baseline.md=.
+  - (L) until Goal [4/4].
+
+* References
+  - Lucene LatLonPoint / BKD: https://lucene.apache.org/core/ (org.apache.lucene.document.LatLonPoint)
+  - H3: https://h3geo.org/docs/api/regions (polygonToCells)
+  - Doris AGENTS.md (coding standards, gensrc field-id rule, no dynamic code loading)
