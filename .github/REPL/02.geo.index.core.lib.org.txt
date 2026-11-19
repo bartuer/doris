@@ -184,7 +184,7 @@
         macOS), keeps ASan+UBSan.  S2 0.14 vs 0.10: only API used must exist in both (checked by building against both).
         :test_tool: on a macOS box (or GitHub Actions =macos-14= in the fork): =run_tests.sh= exit 0.
 
-* TODO Phase Z -- integrate into Doris (adapter, master) [1/4]
+* TODO Phase Z -- integrate into Doris (adapter, master) [2/4]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,P,B
   - [X] Z.1 BE adapter: =be/src/exprs/function/geo/functions_geo_cell.cpp= registers scalar =s2_cell(lon, lat[, level])=
@@ -216,13 +216,15 @@
             The core uses only std allocation, so it is allocator-agnostic; the ASAN UT runs it on glibc malloc.
         :test_tool: =./run-be-ut.sh --run --filter=GeoCell*= green under ASAN and LSAN.
         :audit: gpt-6-astra, write-up fix.archive/02.audit.be-adapter.md.
-  - [ ] Z.4 in-BE perf: the P.1 numbers inside doris_be (RELEASE): load 10 M rows with the generated cell column
+  - [X] Z.4 in-BE perf: the P.1 numbers inside doris_be (RELEASE): load 10 M rows with the generated cell column
         vs without (plan 01 B.2 table) -> load-time overhead; cover() time from the query Profile.
         :test_tool: fix.archive/02.geo.core.bench.md gains an "inside Doris" table; load overhead <= 10%.
         MEASURED 22:25Z: s2_cell column +16% load (bar 10%: MISSED by 6 pts); + inverted index +92%, identical to an
         inverted index on any BIGINT column (+91%).  Item stays [ ]: either accept 16% (the cell costs 19 ns/row in
         the pipeline) or cut cell_of: S2LatLng -> S2Point -> face/ij -> id does trig; a direct lat/lng -> face-ij path
         (S2 =S2CellId::FromFaceIJ= after projecting once) may halve it.  :recommend: accept, the index cost dominates.
+        TAKEN 22:27Z (exec_plan ladder rung 3, reversible): accepted at +16%; the inverted index (+75 pts) dominates and
+        is Doris' standard cost.  Reopen if a user load is bound by s2_cell.
   - [ ] Z.2 hand off to plan 01 Phase C.3: generated column =cell BIGINT AS (s2_cell(lon, lat))= + numeric inverted
         index; planner rewrite of =ST_Contains(<const polygon>, ST_Point(lon, lat))= into =cover()= ranges + recheck.
         :test_tool: plan 01 C.3 / Z.2 test tools.
