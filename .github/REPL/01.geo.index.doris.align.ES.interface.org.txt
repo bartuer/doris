@@ -18,6 +18,14 @@
   repo is written entirely in English -- no Chinese mixed in.  Chinese user quotes are recorded translated,
   marked "(translated from Chinese)".
 
+  GUIDING PRINCIPLE (owner, 11:53Z message later paragraphs, relayed 12:21Z room doris 20261119T122127Z-c89e64):
+  Doris must get a geospatial index on par with ES -- autonomous-driving companies depend on it.  Use the
+  FASTEST, most efficient algorithm and the most efficient language; do not let platform / dependency overhead
+  drive the design.  Every Frontier choice and work item is judged against this first.
+
+  Repo (owner, same relay): GitHub, not ADO.  origin = the owner's GitHub fork of apache/doris, upstream =
+  apache/doris; branch =geo-index= is pushed to the fork; the work will be open-sourced.  Never push to apache/doris.
+
 * Execution environment
   This plan runs on a multi-machine environment described in:
 
@@ -31,6 +39,12 @@
      addon.  Pick a machine, e.g. c05, clone the doris repo to workspace, create .github/REPL/fix.archive,
      /org_plan 01.geo.index.doris.align.ES.interface.org.txt, and also create a new CLI session doris_geo_index and
      a room doris in tmux.  /kiss! /frontier.  Report after the dev environment is set up."
+  - (same message, later paragraphs; Feishu screenshot re-sent via WeChat 12:07Z, relayed to room doris 12:21Z)
+    "We need Doris to support a geospatial index like ES; this matters a lot to autonomous-driving companies.
+     Use the fastest, most efficient algorithm and the most efficient language.  Ignore the messy platform and
+     dependency overhead.  This guiding principle is very important -- write it into the plan."
+    + repo on GitHub, not ADO: fork apache/doris to the owner's GitHub account, origin = that fork, upstream =
+      apache, push branch geo-index; "we are going to open-source this".
   - context (same chat, 10:04Z-11:24Z): chaochao asked what ES geo_polygon is, whether it is indexed, and how to make
     the same query fast in Doris.  Answer given: ES = geo_point + BKD; Doris 3.x has no spatial index
     (prefix / inverted / bloom / ngram / zonemap only) -> bbox prefilter + ST_Contains, geohash/H3 sort key.
@@ -86,6 +100,11 @@
   - :interrupt: F4 Target branch: master (4.x) vs branch-3.1 (the user's cluster runs 3.0/3.1).
     :recommend: master for development; back-port is a separate plan.
   - :interrupt: F5 Upstream: contribute to apache/doris (PR via doris-pr-description) or keep internal.
+    Owner 12:21Z relay: "we are going to open-source this" (owner GitHub fork) -> leans open source; an upstream
+    PR to apache/doris is still the owner's call.
+  - Note (GUIDING PRINCIPLE, 12:21Z): "fastest algorithm" re-weighs F1 toward (b) a true 2-D BKD (best pruning,
+    no H3 polyfill or false-positive recheck at cell edges); the :recommend: (a) was chosen to minimise
+    dependency/format cost, which the owner says to ignore.  F1 stays the owner's call -- ask with this note.
 
 * Context
   - ES side to align with:
