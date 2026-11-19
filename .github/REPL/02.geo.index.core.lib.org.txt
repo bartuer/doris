@@ -184,16 +184,20 @@
         macOS), keeps ASan+UBSan.  S2 0.14 vs 0.10: only API used must exist in both (checked by building against both).
         :test_tool: on a macOS box (or GitHub Actions =macos-14= in the fork): =run_tests.sh= exit 0.
 
-* TODO Phase Z -- integrate into Doris (adapter, master) [0/4]
+* TODO Phase Z -- integrate into Doris (adapter, master) [1/4]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,P,B
-  - [ ] Z.1 BE adapter: =be/src/exprs/function/geo/functions_geo_cell.cpp= registers scalar =s2_cell(lon, lat[, level])=
+  - [X] Z.1 BE adapter: =be/src/exprs/function/geo/functions_geo_cell.cpp= registers scalar =s2_cell(lon, lat[, level])=
         (calls =cell_of=) + BE UT =be/test/exprs/function/geo/geo_cell_test.cpp= reusing A.3 fixtures.
         The core joins the BE build with =add_subdirectory(contrib/geo_index_core)= +
         =target_link_libraries(Exprs ... geo_index_core)= (+ the BE UT link list); S2 from =thirdparty/installed=;
         no file copied into =be/src=.  cover() is called with the S2Polygon Doris already parsed (=GeoPolygon=).  :kiss: <record>
         :test_tool: =./run-be-ut.sh --run --filter=GeoCell*= green (ASAN build).
-        :audit: <record>
+        DONE 18:40Z: BE =s2_cell(lat, lng[, level])= (level default 16, out-of-range -> NULL like h3) + FE
+        =S2Cell= Nereids function.  CMake: =add_subdirectory= must come AFTER the thirdparty include dirs (first
+        try failed: 's2/s2cell_id.h' not found).  ASAN BE UT 3/3 GeoCellTest incl. 9,491 fixture points == core.
+        :kiss: rung 2 -- copied the =h3_lat_lng_to_cell= adapter shape; ~70 lines BE + ~60 lines FE.
+        :audit: code-review/gpt-6-astra: 0 findings (link "/workspace/doris/.github/REPL/fix.archive/02.audit.be-adapter.md" 1)
   - [ ] Z.3 in-BE memory check (the core runs INSIDE doris_be, statically linked C++; no JVM/JNI boundary):
         (a) ASAN BE UT: the Z.1 test under Doris' own =BUILD_TYPE=ASAN= (=CXX_FLAGS_ASAN=, ldb clang).  Watch
             for the absl btree layout mismatch seen standalone (fix.archive/02.audit.core.md #3): if Doris'

@@ -33,7 +33,7 @@ add_library(Exprs STATIC ${SRC_FILES})
 # function_array_distance uses faiss headers (platform_macros.h, distances.h),
 # which are exported by ann_index via PUBLIC linkage with faiss.
 target_link_libraries(Exprs
-    PRIVATE ann_index h3
+    PRIVATE ann_index h3 geo_index_core
     PUBLIC DataSketches::HLL)
 
 pch_reuse(Exprs)

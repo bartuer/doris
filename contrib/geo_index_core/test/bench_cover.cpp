@@ -152,7 +152,8 @@ int print_selectivity() {
                     long hits = 0;
                     long candidates = 0;
                     for (const Point& p : points) {
-                        hits += polygon->Contains(S2LatLng::FromDegrees(p.lat, p.lon).Normalized().ToPoint());
+                        hits += polygon->Contains(
+                                S2LatLng::FromDegrees(p.lat, p.lon).Normalized().ToPoint());
                         candidates += in_ranges(ranges, geo_index::cell_of(p.lat, p.lon, level));
                     }
                     std::printf("%s\t%d\t%d\t%zu\t%ld\t%ld\t%.2f\n", name.c_str(), level, max_cells,

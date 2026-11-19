@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 #include "geo_index/cover.h"
 
 #include <s2/s2cell_id.h>

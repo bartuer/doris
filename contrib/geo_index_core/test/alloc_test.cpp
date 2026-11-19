@@ -98,7 +98,7 @@ int main() {
         sink = sink ^ geo_index::cell_of(-89.9 + (i % 1799) * 0.1, -179.9 + (i % 3599) * 0.1, 16);
     }
     long allocations = g_allocs - before;
-    std::printf("cell_of: positive control %ld/9 counted; 1000000 calls, %ld allocations\n", control,
-                allocations);
+    std::printf("cell_of: positive control %ld/9 counted; 1000000 calls, %ld allocations\n",
+                control, allocations);
     return allocations == 0 ? 0 : 1;
 }

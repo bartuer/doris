@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 #pragma once
 
 #include <cstdio>
@@ -23,10 +22,10 @@
 
 // Precondition check that stays on in release builds (AGENTS.md: crash, never continue).
 // The core has no Doris headers, so this stands in for DORIS_CHECK.
-#define GEO_CHECK(cond)                                                                    \
-    do {                                                                                   \
-        if (!(cond)) {                                                                     \
+#define GEO_CHECK(cond)                                                                      \
+    do {                                                                                     \
+        if (!(cond)) {                                                                       \
             std::fprintf(stderr, "%s:%d GEO_CHECK failed: %s\n", __FILE__, __LINE__, #cond); \
-            std::abort();                                                                  \
-        }                                                                                  \
+            std::abort();                                                                    \
+        }                                                                                    \
     } while (0)

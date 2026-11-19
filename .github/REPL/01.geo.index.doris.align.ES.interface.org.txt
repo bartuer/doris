@@ -159,6 +159,11 @@
     (link "/workspace/doris/.github/REPL/02.geo.index.core.lib.org.txt" 1).  MEASURED 13:45Z: S2 0.10.0 is a
     Doris thirdparty on master, 4.1 and 3.1 -> the F1 cell encoder is S2 (not an own geohash; KISS rung 5).
     C.1/C.2 are done when plan 02 Phase A + Z.1 are done.
+  - MEASURED 18:05Z (fix.archive/01.geo.index.reuse.md): a generated BIGINT cell column + the STOCK numeric
+    inverted (BKD) index already writes per-segment BKD trees at load (C.1 = DDL only) and answers
+    =cell BETWEEN= with ScanRows == hits (1,001 of 100 k) once =inverted_index_skip_threshold= = 0
+    (default 50 bypasses the BKD index: 87,411 rows scanned).  So C.1/C.2 need no new BE index code; the work
+    moves to C.3 (planner rewrite + keeping the BKD index from being bypassed).
   - [ ] C.1 writer: per segment, cells/points -> index file (reuse snii bkd builder for (a)).  BE unit test.
         :test_tool: =./run-be-ut.sh --run --filter=GeoIndex*= green.
   - [ ] C.2 reader + query: polygon -> cell set -> row bitmap; exact ST_Contains on the candidates only.

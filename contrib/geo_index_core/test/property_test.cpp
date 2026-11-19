@@ -120,8 +120,8 @@ TEST(GeoIndexCoverProperty, NoFalseNegativesOnCellBoundaries) {
                 for (int k = 0; k < 64; ++k) {
                     double lat = bound.lat_lo().degrees() +
                                  unit(rng) * (bound.lat_hi() - bound.lat_lo()).degrees();
-                    double lon = bound.lng_lo().degrees() + unit(rng) * bound.lng().GetLength() *
-                                                                    180 / M_PI;
+                    double lon = bound.lng_lo().degrees() +
+                                 unit(rng) * bound.lng().GetLength() * 180 / M_PI;
                     probes.push_back(S2LatLng::FromDegrees(lat, lon).Normalized().ToPoint());
                 }
                 for (const S2Point& probe : probes) {
@@ -164,8 +164,10 @@ TEST(GeoIndexCoverProperty, PolygonBoundaryIsCovered) {
                     for (double t : {0.0, 0.25, 0.5, 0.75}) {
                         S2LatLng ll(((1 - t) * a + t * b).Normalize());
                         ++checked;
-                        ASSERT_TRUE(in_ranges(ranges, cell_of(ll.lat().degrees(), ll.lng().degrees(), level)))
-                                << "polygon " << i << " level " << level << " boundary point " << ll;
+                        ASSERT_TRUE(in_ranges(
+                                ranges, cell_of(ll.lat().degrees(), ll.lng().degrees(), level)))
+                                << "polygon " << i << " level " << level << " boundary point "
+                                << ll;
                     }
                 }
             }

@@ -632,6 +632,10 @@ include_directories(
     ${GPERFTOOLS_HOME}/include
 )
 
+# Geo index core (plan 02): S2 cell ids + polygon covers.  After the thirdparty
+# include dirs above, which give it S2/absl headers.
+add_subdirectory(${CONTRIB_PATH}/geo_index_core ${PROJECT_BINARY_DIR}/geo_index_core)
+
 if ("${DORIS_JAVA_HOME}" STREQUAL "")
     set(DORIS_JAVA_HOME "$ENV{JAVA_HOME}")
 endif()
@@ -778,7 +782,7 @@ set(DORIS_DEPENDENCIES ${DORIS_DEPENDENCIES} ic)
 set(DORIS_DEPENDENCIES ${DORIS_DEPENDENCIES} clucene-core-static)
 set(DORIS_DEPENDENCIES ${DORIS_DEPENDENCIES} clucene-shared-static)
 set(DORIS_DEPENDENCIES ${DORIS_DEPENDENCIES} clucene-contribs-lib)
-set(DORIS_DEPENDENCIES ${DORIS_DEPENDENCIES} h3)
+set(DORIS_DEPENDENCIES ${DORIS_DEPENDENCIES} h3 geo_index_core)
 
 set(DORIS_DEPENDENCIES ${DORIS_DEPENDENCIES} ${WL_END_GROUP})
 

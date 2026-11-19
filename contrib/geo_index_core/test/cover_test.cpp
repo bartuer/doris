@@ -133,9 +133,9 @@ TEST(GeoIndexCover, NoFalseNegativesOnFixtures) {
                     bool candidate = in_ranges(ranges, cell_of(p.lat, p.lon, level));
                     hits += inside;
                     candidates += candidate;
-                    ASSERT_TRUE(candidate || !inside)
-                            << name << " level " << level << " max_cells " << max_cells
-                            << ": false negative id " << p.id << " (" << p.lon << " " << p.lat << ")";
+                    ASSERT_TRUE(candidate || !inside) << name << " level " << level << " max_cells "
+                                                      << max_cells << ": false negative id " << p.id
+                                                      << " (" << p.lon << " " << p.lat << ")";
                 }
                 EXPECT_GT(hits, 0) << name;
                 EXPECT_GE(candidates, hits) << name;
