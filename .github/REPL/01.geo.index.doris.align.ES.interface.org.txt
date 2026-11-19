@@ -152,7 +152,7 @@
         -> an index must use the geodesic S2 cover (plan 02), never a lat/lon box (G3).
         (link "/workspace/doris/.github/REPL/fix.archive/01.geo.baseline.md" 1)
 
-* TODO Phase C -- the index (shape chosen at F1) [1/5]
+* TODO Phase C -- the index (shape chosen at F1) [3/6]
   :needs: {"tier":"wsl","box":"c05"}
   :after: B
   - Phase C core (cell encoder, polygon cover, tests, memcheck, Docker) is split out to plan 02
@@ -169,16 +169,18 @@
         DONE 18:55Z: no writer code -- =s2_cell= (plan 02 Z.1, f5233693e7, ASAN UT =GeoCellTest*= 3/3) feeds a generated
         BIGINT column; the stock BKD inverted-index writer builds the per-segment tree at load (MEASURED with the
         h3 stand-in: 100 k rows in 195 ms, fix.archive/01.geo.index.reuse.md).
-  - [ ] C.2 reader + query: polygon -> cell set -> row bitmap; exact ST_Contains on the candidates only.
+  - [X] C.2 reader + query: polygon -> cell set -> row bitmap; exact ST_Contains on the candidates only.
         :test_tool: BE UT: 3 polygons x 10 k random points, bitmap == brute force.
         Implemented by C.3a (=s2_covers= = the polygon -> row bitmap step); flipped with C.3a.
+        DONE 19:20Z: BE UT =S2CoversIndexIsSupersetOfStContains=: 3 polygons x 9,491 fixture points, index bitmap is a
+        superset of brute-force ST_Contains and equals the row path (ASAN).
   - [ ] C.3 FE: DDL = generated column =geo_cell BIGINT AS (s2_cell(lat, lon))= + =INDEX idx_cell (geo_cell)
         USING INVERTED= (existing numeric index, no new index type; audit 14:00Z finding 4) + planner pushes
         =ST_Contains(<const polygon>, ST_Point(lon, lat))= to the index.
         :test_tool: =./run-fe-ut.sh --run <GeoIndex test>= green; EXPLAIN shows the index predicate.
         Design 18:55Z (/kiss, MEASURED): the FE has no S2 library and cover() needs one, so the cover cannot run
         in the FE without a new Java dependency.  Split C.3 so it ends at a working index:
-  - [ ] C.3a BE: =s2_covers(<const polygon WKT/shape>, geo_cell[, level, max_cells])= BOOLEAN, approximate
+  - [X] C.3a BE: =s2_covers(<const polygon WKT/shape>, geo_cell[, level, max_cells])= BOOLEAN, approximate
         index predicate (shape of =is_ip_address_in_range= in =be/src/exprs/function/function_ip.h=):
         =evaluate_inverted_index= decodes the const polygon once (=GeoShape::from_encoded= -> =GeoPolygon::polygon()=),
         calls =geo_index::cover()=, ORs one BKD range query per range (=GREATER_EQUAL= & =LESS_EQUAL=,
@@ -189,6 +191,14 @@
         :kiss: no FE rewrite yet (users / ES mapping write the AND); no new index type; no FE S2 dependency.
         :test_tool: BE UT (bitmap == brute force on fixtures) + on the B.2 cluster: city polygon ScanRows <= 2x hits,
         result == unindexed ST_Contains.
+        DONE 19:20Z: 10 M rows, city: 334,307 rows scanned (1.22x hits, 3.3% of rows), hits == unindexed; warm 75 ms
+        vs 222 ms full.  Cold 575 ms -> C.4.  (link "/workspace/doris/.github/REPL/fix.archive/01.geo.index.reuse.md" 1)
+        :audit: code-review/gpt-6-astra: 1 MEDIUM (one-sided BKD scans) -> C.4 (fix.archive/02.audit.be-adapter.md r2)
+  - [ ] C.4 bounded BKD range per cover range (audit finding, measured cold 575-1,816 ms): add a two-bound numeric
+        query to the BKD path (=build_bkd_query_bounds= + =BkdReader::range(lower, upper)= already exists in SNII; the
+        CLucene BKD path for V1/V2 format) and use it in =s2_covers=.  Shared index code -> own UT + audit.
+        :test_tool: BE UT for the bounded query (both readers) + cluster: cold <= 2x warm for the 3 polygons, city warm
+        <= 62 ms (beats the planar bbox), hits unchanged.
   - [ ] C.3b FE: Nereids rule rewrites =ST_Contains(<const polygon>, ST_Point(lon, lat))= on a table whose
         =geo_cell= is =s2_cell(lat, lon)= into =s2_covers(poly, geo_cell) AND ST_Contains(...)=.  Pure FE pattern
         match, no S2 in the FE.

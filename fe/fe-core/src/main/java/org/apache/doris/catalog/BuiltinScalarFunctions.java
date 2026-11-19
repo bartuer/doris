@@ -458,6 +458,7 @@ import org.apache.doris.nereids.trees.expressions.functions.scalar.Rpad;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.Rtrim;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.RtrimIn;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.S2Cell;
+import org.apache.doris.nereids.trees.expressions.functions.scalar.S2Covers;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.Score;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.Search;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.Sec;
@@ -1142,6 +1143,7 @@ public class BuiltinScalarFunctions implements FunctionHelper {
             scalar(H3CellToLatLng.class, "h3_cell_to_lat_lng"),
             scalar(H3LatLngToCell.class, "h3_lat_lng_to_cell"),
             scalar(S2Cell.class, "s2_cell"),
+            scalar(S2Covers.class, "s2_covers"),
             scalar(StPolyfromtext.class, "st_polyfromtext"),
             scalar(StPolygon.class, "st_polygon"),
             scalar(StPolygonfromtext.class, "st_polygonfromtext"),
