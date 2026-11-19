@@ -70,7 +70,7 @@
 * Goal [0/4]
   - [ ] G1 A spatial index on a lat/lon (or POINT) column in Doris BE, built per segment at load time,
         that answers "point within polygon" by visiting only the leaf blocks the polygon's cells cover.
-  - [ ] G2 ES-aligned interface: the ES =geo_polygon= / =geo_shape within= query shape maps 1:1 to Doris SQL
+  - [X] G2 ES-aligned interface: the ES =geo_polygon= / =geo_shape within= query shape maps 1:1 to Doris SQL
         (one documented table of ES DSL -> Doris SQL, incl. lat/lon order and closed-ring rules).
   - [ ] G3 Correct: on a fixed dataset the indexed query returns exactly the rows =ST_Contains= returns
         with the index disabled (diff = 0), incl. boundary points, antimeridian, empty and NULL.
@@ -243,10 +243,14 @@
         on 10 M rows: city 180 -> 48-58 ms, thin 215 -> 55-59, concave 203 -> 96, hits identical.
         :audit: code-review/gpt-6-astra r4: 2 HIGH, 2 fixed (fix.archive/02.audit.be-adapter.md)
 
-* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [0/5]
+* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [1/5]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,B,C
-  - [ ] Z.1 ES -> Doris mapping table (G2) in =fix.archive/01.geo.es.mapping.md=.
+  - [X] Z.1 ES -> Doris mapping table (G2) in =fix.archive/01.geo.es.mapping.md=.
+        DONE 21:30Z: DDL + 10 query shapes (within/intersects/geo_polygon/WKT/holes/envelope/bbox/distance/disjoint/contains),
+        lon/lat order, ring closure + orientation, planar (ES/Lucene 2D) vs geodesic (Doris S2) edges with measured
+        bulge (city: 14.7 m, 83 of 273,872 points), boundary points, antimeridian; envelope/hole/antimeridian checked
+        on the cluster (indexed == unindexed, rewritten).
   - [ ] Z.2 regression suite =regression-test/suites/geo_index_p0/=: indexed vs unindexed diff = 0 (G3).
         :test_tool: =./run-regression-test.sh --run -s geo_index_p0= PASS.
   - [ ] Z.3 100 M points, the 3 polygons: rows scanned <= 5%, >= 3x vs bbox baseline (G4)
