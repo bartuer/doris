@@ -174,15 +174,21 @@
         round 3, 0 findings).  =run_tests.sh= 11/11, valgrind clean.
         :audit: code-review/gpt-6-astra round 3: 0 findings (fix.archive/02.audit.core.md).
 
-* TODO Phase B -- reference env: Docker image + macOS [0/2]
+* TODO Phase B -- reference env: Docker image + macOS [1/2]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A
-  - [ ] B.1 =contrib/geo_index_core/Dockerfile= (ubuntu:24.04, =libs2-dev= 0.10.0 = Doris' S2 version,
+  - [X] B.1 =contrib/geo_index_core/Dockerfile= (ubuntu:24.04, =libs2-dev= 0.10.0 = Doris' S2 version,
         =libgtest-dev=, =valgrind=, =cmake=, =g++=, =python3=).  Usage in README section of =run_tests.sh= header.
         :test_tool: =docker build -t geo-index-core contrib/geo_index_core && docker run --rm -v $PWD:/src geo-index-core /src/contrib/geo_index_core/run_tests.sh= exit 0.
+        DONE 22:00Z: that exact command on c05: exit 0, 11/11 (GCC ASan+UBSan), valgrind 0 errors, "all clean"; also green in
+        the fork's GitHub Actions (=.github/workflows/geo-index-core.yml= job =linux=, runs 44624875720, 44625743392).
   - [ ] B.2 macOS path: =run_tests.sh= detects Darwin -> brew prefix for s2/gtest, skips valgrind (not on arm64
         macOS), keeps ASan+UBSan.  S2 0.14 vs 0.10: only API used must exist in both (checked by building against both).
         :test_tool: on a macOS box (or GitHub Actions =macos-14= in the fork): =run_tests.sh= exit 0.
+        BLOCKED 22:12Z: no macOS box in the fleet (fleet-ips.json); the fork's =macos-14= job is cancelled 1 s after queueing with
+        no runner assigned (runs 44624875720, 44625743392) -- account-level macOS-runner restriction, not a code failure.
+        Needs the owner: enable macOS runners / Actions billing on bartuer, or run =contrib/geo_index_core/run_tests.sh= on a
+        Mac once (=brew install cmake s2geometry googletest=).
 
 * DONE Phase Z -- integrate into Doris (adapter, master) [4/4]
   :needs: {"tier":"wsl","box":"c05"}
