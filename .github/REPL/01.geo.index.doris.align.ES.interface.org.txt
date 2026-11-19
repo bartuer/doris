@@ -152,7 +152,7 @@
         -> an index must use the geodesic S2 cover (plan 02), never a lat/lon box (G3).
         (link "/workspace/doris/.github/REPL/fix.archive/01.geo.baseline.md" 1)
 
-* TODO Phase C -- the index (shape chosen at F1) [4/7]
+* TODO Phase C -- the index (shape chosen at F1) [5/7]
   :needs: {"tier":"wsl","box":"c05"}
   :after: B
   - Phase C core (cell encoder, polygon cover, tests, memcheck, Docker) is split out to plan 02
@@ -217,9 +217,13 @@
         OFF: cold city 575 -> 105 ms, thin 1,816 -> 109, concave 1,053 -> 148 (cold <= 1.6x warm: PASS); hits unchanged;
         index search 370 -> 3 ms.  city warm 69 ms vs bbox 62 ms: NOT yet met -> C.5.
         :audit: code-review/gpt-6-astra r3: 0 findings (fix.archive/02.audit.be-adapter.md)
-  - [ ] C.5 cache the parsed polygon + cover ranges per FunctionContext in =s2_covers= (row path) the way
+  - [X] C.5 cache the parsed polygon + cover ranges per FunctionContext in =s2_covers= (row path) the way
         =StRelationState= does for ST_Contains, so a constant polygon is parsed and covered once per fragment.
         :test_tool: cluster city warm <= 62 ms (beats the planar bbox of B.3), hits unchanged; GeoCellTest green.
+        :SUPERSEDED_BY_MEASUREMENT: 20:30Z, no code: back-to-back 10-run medians with profile off give city
+        51 ms (bar 62 ms, bbox 57 ms and wrong), thin 56 ms, concave 97 ms; s2_covers alone 49 ms vs 56 ms with the
+        recheck -> polygon parsing is not the bottleneck; the "69 ms" was profile overhead.  R-KISS: no cache.
+        (fix.archive/01.geo.index.reuse.md section 5)
   - [ ] C.3b FE: Nereids rule rewrites =ST_Contains(<const polygon>, ST_Point(lon, lat))= on a table whose
         =geo_cell= is =s2_cell(lat, lon)= into =s2_covers(poly, geo_cell) AND ST_Contains(...)=.  Pure FE pattern
         match, no S2 in the FE.
