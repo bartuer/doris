@@ -243,7 +243,7 @@
         on 10 M rows: city 180 -> 48-58 ms, thin 215 -> 55-59, concave 203 -> 96, hits identical.
         :audit: code-review/gpt-6-astra r4: 2 HIGH, 2 fixed (fix.archive/02.audit.be-adapter.md)
 
-* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [2/5]
+* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [3/7]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,B,C
   - [X] Z.1 ES -> Doris mapping table (G2) in =fix.archive/01.geo.es.mapping.md=.
@@ -273,9 +273,11 @@
         in an interior range skip ST_Contains (=s2_covers= returns a 2-level answer, or a second predicate
         =s2_within_interior=).  Expected: ~0 rechecks for the city's interior hits.
         :test_tool: plan 02 property tests extended (interior cell => every point inside); cluster: city <= 1/3 of bbox ms.
-  - [ ] Z.3b sort the indexed table by geo_cell (key order or cluster key) so cover ranges are contiguous row spans;
+  - [X] Z.3b sort the indexed table by geo_cell (key order or cluster key) so cover ranges are contiguous row spans;
         measure load cost vs query gain.
         :test_tool: fix.archive/01.geo.bench.md row with cell-sorted table.
+        DONE 22:10Z: =DUPLICATE KEY(geo_cell)= works on the generated column; city 270 -> 204 ms, thin 317 -> 199, concave
+        881 -> 607 (vs bbox 1.34x / 7.6x / 1.2x; vs full 10x / 10.8x / 3.8x).  Load not slower (32 s from INSERT SELECT).
   - [ ] Z.4 port to =branch-4.1=: the core directory unchanged + the 4.1 adapter; BE UT + =geo_index_p0= pass (F3/F4).
         :test_tool: =./run-be-ut.sh --run --filter=GeoIndex*= and =./run-regression-test.sh --run -d geo_index_p0= PASS on 4.1.
   - [ ] Z.5 port to =branch-3.1=: same core + the 3.1 adapter; same tests pass (F3/F4).
