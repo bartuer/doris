@@ -90,6 +90,7 @@ import org.apache.doris.nereids.rules.rewrite.ExtractAndNormalizeWindowExpressio
 import org.apache.doris.nereids.rules.rewrite.ExtractFilterFromCrossJoin;
 import org.apache.doris.nereids.rules.rewrite.ExtractSingleTableExpressionFromDisjunction;
 import org.apache.doris.nereids.rules.rewrite.FindHashConditionForJoin;
+import org.apache.doris.nereids.rules.rewrite.GeoIndexRewrite;
 import org.apache.doris.nereids.rules.rewrite.InferAggNotNull;
 import org.apache.doris.nereids.rules.rewrite.InferFilterNotNull;
 import org.apache.doris.nereids.rules.rewrite.InferInPredicateFromOr;
@@ -738,7 +739,9 @@ public class Rewriter extends AbstractBatchJobExecutor {
                                 new NormalizeOlapTableStreamScan(),
                                 new PruneFileScanPartition(),
                                 new PushDownFilterIntoSchemaScan(),
-                                new PruneOlapScanTablet()
+                                new PruneOlapScanTablet(),
+                                // Geo index: add s2_covers next to ST_Contains (plan 01 C.3b).
+                                new GeoIndexRewrite()
                         ),
                         bottomUp(RuleSet.PUSH_DOWN_FILTERS)
                 ),

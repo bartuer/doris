@@ -152,7 +152,7 @@
         -> an index must use the geodesic S2 cover (plan 02), never a lat/lon box (G3).
         (link "/workspace/doris/.github/REPL/fix.archive/01.geo.baseline.md" 1)
 
-* TODO Phase C -- the index (shape chosen at F1) [5/7]
+* DONE Phase C -- the index (shape chosen at F1) [7/7]
   :needs: {"tier":"wsl","box":"c05"}
   :after: B
   - Phase C core (cell encoder, polygon cover, tests, memcheck, Docker) is split out to plan 02
@@ -174,12 +174,13 @@
         Implemented by C.3a (=s2_covers= = the polygon -> row bitmap step); flipped with C.3a.
         DONE 19:20Z: BE UT =S2CoversIndexIsSupersetOfStContains=: 3 polygons x 9,491 fixture points, index bitmap is a
         superset of brute-force ST_Contains and equals the row path (ASAN).
-  - [ ] C.3 FE: DDL = generated column =geo_cell BIGINT AS (s2_cell(lat, lon))= + =INDEX idx_cell (geo_cell)
+  - [X] C.3 FE: DDL = generated column =geo_cell BIGINT AS (s2_cell(lat, lon))= + =INDEX idx_cell (geo_cell)
         USING INVERTED= (existing numeric index, no new index type; audit 14:00Z finding 4) + planner pushes
         =ST_Contains(<const polygon>, ST_Point(lon, lat))= to the index.
         :test_tool: =./run-fe-ut.sh --run <GeoIndex test>= green; EXPLAIN shows the index predicate.
         Design 18:55Z (/kiss, MEASURED): the FE has no S2 library and cover() needs one, so the cover cannot run
         in the FE without a new Java dependency.  Split C.3 so it ends at a working index:
+        DONE 21:20Z via C.3a + C.3b (both [X]): FE UT GeoIndexRewriteTest green; EXPLAIN shows s2_covers.
   - [X] C.3a BE: =s2_covers(<const polygon WKT/shape>, geo_cell[, level, max_cells])= BOOLEAN, approximate
         index predicate (shape of =is_ip_address_in_range= in =be/src/exprs/function/function_ip.h=):
         =evaluate_inverted_index= decodes the const polygon once (=GeoShape::from_encoded= -> =GeoPolygon::polygon()=),
@@ -224,10 +225,23 @@
         51 ms (bar 62 ms, bbox 57 ms and wrong), thin 56 ms, concave 97 ms; s2_covers alone 49 ms vs 56 ms with the
         recheck -> polygon parsing is not the bottleneck; the "69 ms" was profile overhead.  R-KISS: no cache.
         (fix.archive/01.geo.index.reuse.md section 5)
-  - [ ] C.3b FE: Nereids rule rewrites =ST_Contains(<const polygon>, ST_Point(lon, lat))= on a table whose
+  - [X] C.3b FE: Nereids rule rewrites =ST_Contains(<const polygon>, ST_Point(lon, lat))= on a table whose
         =geo_cell= is =s2_cell(lat, lon)= into =s2_covers(poly, geo_cell) AND ST_Contains(...)=.  Pure FE pattern
         match, no S2 in the FE.
         :test_tool: =./run-fe-ut.sh --run <GeoIndex rule test>= green; EXPLAIN shows =s2_covers=.
+        Design 20:40Z (/kiss): one =OneRewriteRuleFactory= =GeoIndexRewrite= on =logicalFilter(logicalOlapScan())=, run
+        just before =RuleSet.PUSH_DOWN_FILTERS= (Rewriter, after partition pruning).  For each conjunct
+        =ST_Contains(ST_Polygon(<string literal>), ST_Point(<slot lon>, <slot lat>))= it looks for a column C of the same
+        table whose generated expression SQL is =s2_cell(<lat>, <lon>)= (2-arg form = default level 16 that s2_covers
+        assumes) and that has an inverted index (=OlapTable.getInvertedIndex=), and adds the conjunct
+        =s2_covers(C, <literal>)=.  The original ST_Contains stays (exact recheck), so the rewrite can only narrow rows,
+        never change results.  Matching on the stored expression SQL (=GeneratedColumnInfo.getExprSql()=, e.g.
+        =s2_cell(lat,lon)=) is the laziest exact test.  kiss: 2-arg s2_cell only; upgrade when a user needs a level.
+        [audit C.3b #1 overruled the "laziest exact test": SQL-text matching is NOT exact (column names may contain
+        spaces) -> structural match on =GeneratedColumnInfo.getExpr()=; #2 added the BIGINT type check.]
+        DONE 21:20Z: FE UT 3/3 (incl. 6 negative tables/shapes); EXPLAIN of the UNCHANGED query shows s2_covers; same SQL
+        on 10 M rows: city 180 -> 48-58 ms, thin 215 -> 55-59, concave 203 -> 96, hits identical.
+        :audit: code-review/gpt-6-astra r4: 2 HIGH, 2 fixed (fix.archive/02.audit.be-adapter.md)
 
 * TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [0/5]
   :needs: {"tier":"wsl","box":"c05"}
