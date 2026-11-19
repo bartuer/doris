@@ -67,12 +67,12 @@
       no storage-index plugin SPI.  A new index type is in-tree BE code + FE DDL, not a loadable plugin.
   - Build env: =apache/doris:build-env-ldb-toolchain-latest= (Docker Hub, the master toolchain) pulled on c05.
 
-* Goal [1/4]
+* Goal [2/4]
   - [ ] G1 A spatial index on a lat/lon (or POINT) column in Doris BE, built per segment at load time,
         that answers "point within polygon" by visiting only the leaf blocks the polygon's cells cover.
   - [X] G2 ES-aligned interface: the ES =geo_polygon= / =geo_shape within= query shape maps 1:1 to Doris SQL
         (one documented table of ES DSL -> Doris SQL, incl. lat/lon order and closed-ring rules).
-  - [ ] G3 Correct: on a fixed dataset the indexed query returns exactly the rows =ST_Contains= returns
+  - [X] G3 Correct: on a fixed dataset the indexed query returns exactly the rows =ST_Contains= returns
         with the index disabled (diff = 0), incl. boundary points, antimeridian, empty and NULL.
   - [ ] G4 Fast: on >= 100 M points a city-sized polygon scans <= 5% of rows (Profile =RowsInvertedIndexFiltered=
         or the new counter) and wall time beats the bbox-prefilter baseline by >= 3x.
@@ -243,7 +243,7 @@
         on 10 M rows: city 180 -> 48-58 ms, thin 215 -> 55-59, concave 203 -> 96, hits identical.
         :audit: code-review/gpt-6-astra r4: 2 HIGH, 2 fixed (fix.archive/02.audit.be-adapter.md)
 
-* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [1/5]
+* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [2/5]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,B,C
   - [X] Z.1 ES -> Doris mapping table (G2) in =fix.archive/01.geo.es.mapping.md=.
@@ -251,8 +251,14 @@
         lon/lat order, ring closure + orientation, planar (ES/Lucene 2D) vs geodesic (Doris S2) edges with measured
         bulge (city: 14.7 m, 83 of 273,872 points), boundary points, antimeridian; envelope/hole/antimeridian checked
         on the cluster (indexed == unindexed, rewritten).
-  - [ ] Z.2 regression suite =regression-test/suites/geo_index_p0/=: indexed vs unindexed diff = 0 (G3).
+  - [X] Z.2 regression suite =regression-test/suites/geo_index_p0/=: indexed vs unindexed diff = 0 (G3).
         :test_tool: =./run-regression-test.sh --run -s geo_index_p0= PASS.
+        DONE 21:15Z: =test_geo_index= -- 20,011 deterministic points (Beijing, world, antimeridian band, polar cap,
+        polygon vertices / edge points, +-180, pole, NULL, out of range), 7 polygons (city, thin, concave, hole,
+        antimeridian, pole_cap, empty_area): indexed EXCEPT plain = plain EXCEPT indexed = 0 for all (generated .out);
+        EXPLAIN shows s2_covers; profile asserts RowsInvertedIndexFiltered > 0 (negative control: index off -> FAIL).
+        =./run-regression-test.sh --run -d geo_index_p0 -s test_geo_index=: "All suites success".
+        :audit: code-review/gpt-6-astra r5: 1 MEDIUM fixed (fix.archive/02.audit.be-adapter.md)
   - [ ] Z.3 100 M points, the 3 polygons: rows scanned <= 5%, >= 3x vs bbox baseline (G4)
         -> =fix.archive/01.geo.bench.md=.
   - [ ] Z.4 port to =branch-4.1=: the core directory unchanged + the 4.1 adapter; BE UT + =geo_index_p0= pass (F3/F4).
