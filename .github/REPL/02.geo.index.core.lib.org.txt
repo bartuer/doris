@@ -184,7 +184,7 @@
         macOS), keeps ASan+UBSan.  S2 0.14 vs 0.10: only API used must exist in both (checked by building against both).
         :test_tool: on a macOS box (or GitHub Actions =macos-14= in the fork): =run_tests.sh= exit 0.
 
-* TODO Phase Z -- integrate into Doris (adapter, master) [2/4]
+* TODO Phase Z -- integrate into Doris (adapter, master) [3/4]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,P,B
   - [X] Z.1 BE adapter: =be/src/exprs/function/geo/functions_geo_cell.cpp= registers scalar =s2_cell(lon, lat[, level])=
@@ -225,9 +225,12 @@
         (S2 =S2CellId::FromFaceIJ= after projecting once) may halve it.  :recommend: accept, the index cost dominates.
         TAKEN 22:27Z (exec_plan ladder rung 3, reversible): accepted at +16%; the inverted index (+75 pts) dominates and
         is Doris' standard cost.  Reopen if a user load is bound by s2_cell.
-  - [ ] Z.2 hand off to plan 01 Phase C.3: generated column =cell BIGINT AS (s2_cell(lon, lat))= + numeric inverted
+  - [X] Z.2 hand off to plan 01 Phase C.3: generated column =cell BIGINT AS (s2_cell(lon, lat))= + numeric inverted
         index; planner rewrite of =ST_Contains(<const polygon>, ST_Point(lon, lat))= into =cover()= ranges + recheck.
         :test_tool: plan 01 C.3 / Z.2 test tools.
+        DONE 21:20Z by plan 01 C.3a/C.3b/C.4 (391978ef18) and Z.2 (3e1d4b14ca): generated =geo_cell BIGINT AS
+        (s2_cell(lat, lon))= + numeric inverted index; FE GeoIndexRewrite adds =s2_covers= next to ST_Contains; regression
+        =geo_index_p0= proves indexed == unindexed with the BKD path in use.
 
 * Main Loop
   - (R) =run_tests.sh= (separate shell) -> read ctest + ASan + valgrind output.
