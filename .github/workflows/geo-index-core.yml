@@ -15,8 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# geo_index_core standalone tests (plan 02 B.1/B.2): Linux in the checked-in Docker
-# image (ASan+UBSan, valgrind), macOS with Homebrew S2 (UBSan).
+# geo_index_core standalone tests (plan 02 B.1): Linux in the checked-in Docker image
+# (ASan+UBSan, valgrind).  macOS waived by the owner 2026-11-19 (plan 02 B.2).
 name: geo-index-core
 
 on:
@@ -36,12 +36,3 @@ jobs:
       - run: docker build -t geo-index-core contrib/geo_index_core
       - run: docker run --rm -v "$PWD/contrib/geo_index_core":/src geo-index-core
 
-  macos:
-    runs-on: macos-14
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: contrib/geo_index_core
-      - run: brew install cmake s2geometry googletest
-      - run: contrib/geo_index_core/run_tests.sh

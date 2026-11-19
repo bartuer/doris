@@ -46,18 +46,24 @@
   - BE UT discovery is glob-based (=be/test/CMakeLists.txt= =GLOB_RECURSE= over =storage/*.cpp=, =exprs/*.cpp=):
     a test file in the right dir is picked up with no CMake edit.
 
-* Goal [0/5]
-  - [ ] G1 A standalone C++17 library =geo_index_core= (no Doris headers): point -> cell id; polygon -> sorted
+* Goal [4/5]
+  - [X] G1 A standalone C++17 library =geo_index_core= (no Doris headers): point -> cell id; polygon -> sorted
         disjoint cell-id ranges that cover it (superset; the exact recheck is Doris' own ST_Contains).  Only dependency: S2 (+ gtest for tests).
-  - [ ] G2 Memory-clean: core unit tests pass under ASan+UBSan and under valgrind (0 errors, 0 leaks), and
+        DONE: Phase A; same bytes build in Doris master and branch-4.1.
+  - [X] G2 Memory-clean: core unit tests pass under ASan+UBSan and under valgrind (0 errors, 0 leaks), and
         inside doris_be under Doris' ASAN and LSAN BE UT builds, with allocations charged to the query tracker.
-  - [ ] G3 One-command local test on Linux and macOS (=contrib/geo_index_core/run_tests.sh=), and the same in a
-        checked-in Docker image (reference env).
+        DONE: A.4/A.5 + Z.3.  Exception, recorded in Z.3(c): cover() allocations are untracked by the query tracker,
+        as for ST_Contains today (bounded, once per query).
+  - [X] G3 One-command local test on Linux (=contrib/geo_index_core/run_tests.sh=), and the same in a
+        checked-in Docker image (reference env).  [macOS dropped: owner, Feishu 2026-11-19T23:33Z, see B.2]
+        DONE: B.1 -- run_tests.sh exit 0 on c05 and in the Docker image; fork CI job =linux= green.
   - [ ] G5 Fast: =cell_of= <= 200 ns/point, =cover= <= 1 ms per query, candidate/hit <= 2 (P.1); load
         overhead of the cell column <= 10% inside Doris (Z.4).
-  - [ ] G4 Checked-in test data (points, polygons incl. antimeridian / pole / concave / hole / boundary, expected
+        PARTIAL: 146 ns, 0.4-0.7 ms, 1.2-1.4 (thin 7.5, pole cap 3.1); load +16% -- accepted in Z.4 per :recommend:.
+  - [X] G4 Checked-in test data (points, polygons incl. antimeridian / pole / concave / hole / boundary, expected
         hits) + generator script; core correctness = 0 false negatives of the cover vs S2Polygon::Contains
         (boundary points: cover must include them too).  Exact SQL equality is plan 01 Z.2.
+        DONE: A.3 + A.4 (322,037 points, 0 false negatives).
 
 * Dependencies
   - [X] D1 plan 01 F1-F5 closed (7dfe916aad); this plan IS plan 01 Phase C's core, split out (plan 01 C.1/C.2 link here).
@@ -174,7 +180,7 @@
         round 3, 0 findings).  =run_tests.sh= 11/11, valgrind clean.
         :audit: code-review/gpt-6-astra round 3: 0 findings (fix.archive/02.audit.core.md).
 
-* TODO Phase B -- reference env: Docker image + macOS [1/2]
+* DONE Phase B -- reference env: Docker image + macOS [2/2]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A
   - [X] B.1 =contrib/geo_index_core/Dockerfile= (ubuntu:24.04, =libs2-dev= 0.10.0 = Doris' S2 version,
@@ -182,13 +188,17 @@
         :test_tool: =docker build -t geo-index-core contrib/geo_index_core && docker run --rm -v $PWD:/src geo-index-core /src/contrib/geo_index_core/run_tests.sh= exit 0.
         DONE 22:00Z: that exact command on c05: exit 0, 11/11 (GCC ASan+UBSan), valgrind 0 errors, "all clean"; also green in
         the fork's GitHub Actions (=.github/workflows/geo-index-core.yml= job =linux=, runs 44624875720, 44625743392).
-  - [ ] B.2 macOS path: =run_tests.sh= detects Darwin -> brew prefix for s2/gtest, skips valgrind (not on arm64
+  - [X] B.2 macOS path: =run_tests.sh= detects Darwin -> brew prefix for s2/gtest, skips valgrind (not on arm64
         macOS), keeps ASan+UBSan.  S2 0.14 vs 0.10: only API used must exist in both (checked by building against both).
         :test_tool: on a macOS box (or GitHub Actions =macos-14= in the fork): =run_tests.sh= exit 0.
         BLOCKED 22:12Z: no macOS box in the fleet (fleet-ips.json); the fork's =macos-14= job is cancelled 1 s after queueing with
         no runner assigned (runs 44624875720, 44625743392) -- account-level macOS-runner restriction, not a code failure.
         Needs the owner: enable macOS runners / Actions billing on bartuer, or run =contrib/geo_index_core/run_tests.sh= on a
         Mac once (=brew install cmake s2geometry googletest=).
+        :USER_VERBATIM_2026-11-19: (owner, Feishu 23:33Z, relayed) "plan 02 B.2 macOS is not needed -- close B.2 [X] as
+        waived by owner ... make G3 Linux + Docker only; turn the fork CI macOS job off."
+        WAIVED BY OWNER 2026-11-19T23:33Z: not tested on macOS.  The Darwin branch of run_tests.sh / CMakeLists.txt stays
+        (untested, harmless); the fork CI macOS job is removed (.github/workflows/geo-index-core.yml).
 
 * DONE Phase Z -- integrate into Doris (adapter, master) [4/4]
   :needs: {"tier":"wsl","box":"c05"}
