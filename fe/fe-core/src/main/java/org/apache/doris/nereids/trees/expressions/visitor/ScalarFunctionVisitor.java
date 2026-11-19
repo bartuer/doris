@@ -456,6 +456,8 @@ import org.apache.doris.nereids.trees.expressions.functions.scalar.RoundBankers;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.Rpad;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.Rtrim;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.RtrimIn;
+import org.apache.doris.nereids.trees.expressions.functions.scalar.S2Cell;
+import org.apache.doris.nereids.trees.expressions.functions.scalar.S2Covers;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.ScalarFunction;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.Score;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.Sec;
@@ -2439,6 +2441,14 @@ public interface ScalarFunctionVisitor<R, C> {
 
     default R visitStPoint(StPoint stPoint, C context) {
         return visitScalarFunction(stPoint, context);
+    }
+
+    default R visitS2Cell(S2Cell function, C context) {
+        return visitScalarFunction(function, context);
+    }
+
+    default R visitS2Covers(S2Covers function, C context) {
+        return visitScalarFunction(function, context);
     }
 
     default R visitStPolyfromtext(StPolyfromtext stPolyfromtext, C context) {
