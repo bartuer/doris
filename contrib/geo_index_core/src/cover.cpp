@@ -18,7 +18,6 @@
 
 #include "geo_index/cover.h"
 
-#include <s2/s1angle.h>
 #include <s2/s2cell_id.h>
 #include <s2/s2cell_union.h>
 #include <s2/s2polygon.h>
@@ -37,15 +36,10 @@ std::vector<CellRange> cover(const S2Polygon& polygon, int level, int max_cells)
     options.set_max_cells(max_cells);
     S2RegionCoverer coverer(options);
     S2CellUnion covering = coverer.GetCovering(polygon);
-    // An S2Cell is closed, but S2CellId(point) assigns a boundary point to only ONE of
-    // the cells sharing that boundary, so a polygon point on a covering cell's edge can
-    // get the neighbour's id (audit 2026-11-19 #1).  Grow the union by a radius > 0:
-    // every point of the old union is then strictly inside the new one, so the leaf
-    // cell it is assigned to is under a union cell.  max_level_diff bounds the growth
-    // (<= 4 * (1 + 2^3) = 36x cells, buffer ~1/8 of the largest cell); Expand
-    // normalizes (sorted, no cell contains another), which the merge below relies on.
-    // kiss: fixed buffer; upgrade when Z.3 Profile shows the buffer costs > 1% rows.
-    covering.Expand(S1Angle::Radians(1e-9), 3);
+    // GetCovering returns a normalized union (sorted, no cell contains another),
+    // which the merge below relies on.  No boundary buffer: plan 02 A.4 checked
+    // 273,621 inside + 48,416 boundary points with 0 false negatives without it,
+    // and P.1 measured it at +18-42% candidates (fix.archive/02.geo.core.bench.md).
 
     // Merge in uint64 S2 order (to_bigint preserves it).  Adjacent level-`level`
     // cells (hi.next() == first) join one range, so fewer BETWEEN terms.

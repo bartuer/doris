@@ -17,17 +17,14 @@
 
 // Plan 02 P.1: Google Benchmark for the core.
 //   BM_CellOf                 ns per point (the per-row cost when a row is loaded)
-//   BM_Cover/<poly>/<level>/<max_cells>/<expand>  time per query + ranges + bytes
+//   BM_Cover/<poly>/<level>/<max_cells>  time per query + ranges
 // Selectivity (candidate rows / true hits) is a separate pass over the
 // checked-in fixture points: --geo_selectivity prints a TSV table and exits.
 
 #include <benchmark/benchmark.h>
-#include <s2/s1angle.h>
-#include <s2/s2cell_union.h>
 #include <s2/s2latlng.h>
 #include <s2/s2loop.h>
 #include <s2/s2polygon.h>
-#include <s2/s2region_coverer.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -102,38 +99,6 @@ const auto& polygons() {
     return p;
 }
 
-// The cover() pipeline with Expand switchable, for the on/off comparison only.
-// expand=1 is exactly geo_index::cover().
-std::vector<CellRange> cover_variant(const S2Polygon& polygon, int level, int max_cells, bool expand) {
-    if (expand) {
-        return geo_index::cover(polygon, level, max_cells);
-    }
-    S2RegionCoverer::Options options;
-    options.set_max_level(level);
-    options.set_max_cells(max_cells);
-    S2CellUnion covering = S2RegionCoverer(options).GetCovering(polygon);
-    std::vector<CellRange> ranges;
-    S2CellId lo;
-    S2CellId hi;
-    for (const S2CellId& c : covering) {
-        S2CellId first = c.range_min().parent(level);
-        S2CellId last = c.range_max().parent(level);
-        if (hi.is_valid() && first <= hi.next()) {
-            hi = last;
-            continue;
-        }
-        if (hi.is_valid()) {
-            ranges.push_back({geo_index::to_bigint(lo.id()), geo_index::to_bigint(hi.id())});
-        }
-        lo = first;
-        hi = last;
-    }
-    if (hi.is_valid()) {
-        ranges.push_back({geo_index::to_bigint(lo.id()), geo_index::to_bigint(hi.id())});
-    }
-    return ranges;
-}
-
 bool in_ranges(const std::vector<CellRange>& ranges, int64_t cell) {
     auto it = std::upper_bound(ranges.begin(), ranges.end(), cell,
                                [](int64_t c, const CellRange& r) { return c < r.lo; });
@@ -162,10 +127,9 @@ void BM_Cover(benchmark::State& state) {
     const auto& [name, polygon] = polygons()[state.range(0)];
     int level = static_cast<int>(state.range(1));
     int max_cells = static_cast<int>(state.range(2));
-    bool expand = state.range(3) != 0;
     size_t ranges = 0;
     for (auto _ : state) {
-        auto r = cover_variant(*polygon, level, max_cells, expand);
+        auto r = geo_index::cover(*polygon, level, max_cells);
         ranges = r.size();
         benchmark::DoNotOptimize(r.data());
     }
@@ -173,26 +137,26 @@ void BM_Cover(benchmark::State& state) {
     state.counters["ranges"] = static_cast<double>(ranges);
 }
 BENCHMARK(BM_Cover)
-        ->ArgsProduct({{0, 1, 2, 3, 4, 5}, {12, 16, 20}, {8, 64, 256, 1024}, {0, 1}})
+        ->ArgsProduct({{0, 1, 2, 3, 4, 5}, {12, 16, 20}, {8, 64, 256, 1024}})
         ->Unit(benchmark::kMicrosecond);
 
 // candidate rows / true hits over the fixture points, per polygon and setting.
 int print_selectivity() {
     auto points = load_points();
-    std::printf("polygon\tlevel\tmax_cells\texpand\tranges\thits\tcandidates\tratio\n");
+    std::printf("polygon\tlevel\tmax_cells\tranges\thits\tcandidates\tratio\n");
     for (const auto& [name, polygon] : polygons()) {
         for (int level : {12, 16, 20}) {
             for (int max_cells : {8, 64, 256, 1024}) {
-                for (bool expand : {false, true}) {
-                    auto ranges = cover_variant(*polygon, level, max_cells, expand);
+                {
+                    auto ranges = geo_index::cover(*polygon, level, max_cells);
                     long hits = 0;
                     long candidates = 0;
                     for (const Point& p : points) {
                         hits += polygon->Contains(S2LatLng::FromDegrees(p.lat, p.lon).Normalized().ToPoint());
                         candidates += in_ranges(ranges, geo_index::cell_of(p.lat, p.lon, level));
                     }
-                    std::printf("%s\t%d\t%d\t%d\t%zu\t%ld\t%ld\t%.2f\n", name.c_str(), level, max_cells,
-                                expand, ranges.size(), hits, candidates,
+                    std::printf("%s\t%d\t%d\t%zu\t%ld\t%ld\t%.2f\n", name.c_str(), level, max_cells,
+                                ranges.size(), hits, candidates,
                                 hits == 0 ? 0.0 : static_cast<double>(candidates) / hits);
                 }
             }

@@ -65,6 +65,8 @@
         (=thirdparty/installed=).  gtest: =libgtest-dev= / =brew install googletest= / Doris thirdparty.
 
 * Design (passes /kiss -- record changes here, not in code)
+  - P.2 defaults (fix.archive/02.geo.core.bench.md): column level 16 (~150 m), cover max_cells 64 (0.4-0.7 ms per
+    query, candidate/hit 1.2-1.4 on city/concave/hole/antimeridian), no Expand buffer.
   - :kiss: audit 2026-11-19 (author): folded the memcheck item into A.1 (one script from day one); Z.1 = one
     add_subdirectory line, no source copy.  Ceiling kept on purpose: per-level cell column only (no multi-level
     cells); upgrade when a polygon cover exceeds max_cells ranges and Profile shows > 5% rows scanned.
@@ -147,7 +149,7 @@
         DONE 15:05Z: 273,621 inside points + 48,416 polygon-boundary points, 0 false negatives, with AND without
         Expand -> Expand is not needed for S2Polygon input; P.2 decides on cost.
 
-* TODO Phase P -- perf check of the core (Google Benchmark) [1/2]
+* DONE Phase P -- perf check of the core (Google Benchmark) [2/2]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A
   - [X] P.1 =test/bench_cover.cpp= with Google Benchmark (=libbenchmark-dev= 1.8.3 in the Docker image;
@@ -164,9 +166,13 @@
         shapes, accepted with reasoning).  Expand: +8-20% CPU, +18-42% candidates, no correctness gain.
         Run with =run_bench.sh= (=--cpuset-cpus= pinned).
         (link "/workspace/doris/.github/REPL/fix.archive/02.geo.core.bench.md" 1)
-  - [ ] P.2 choose the defaults from P.1 (column level, max_cells, Expand on/off) and record them in Design
+  - [X] P.2 choose the defaults from P.1 (column level, max_cells, Expand on/off) and record them in Design
         with the numbers; R-KISS: drop Expand if A.4 passes without it and P.1 shows it costs > 10% candidates.
         :test_tool: Design section cites P.1 numbers; =run_tests.sh= green with the chosen defaults.
+        DONE 17:25Z: level 16, max_cells 64 (=kDefaultLevel=, =kDefaultMaxCells= in cover.h); Expand REMOVED
+        (A.4 property tests pass without it; +18-42% candidates; soundness argument from S2 sources in audit
+        round 3, 0 findings).  =run_tests.sh= 11/11, valgrind clean.
+        :audit: code-review/gpt-6-astra round 3: 0 findings (fix.archive/02.audit.core.md).
 
 * TODO Phase B -- reference env: Docker image + macOS [0/2]
   :needs: {"tier":"wsl","box":"c05"}

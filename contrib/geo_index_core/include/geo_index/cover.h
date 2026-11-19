@@ -31,10 +31,15 @@ struct CellRange {
     int64_t hi;
 };
 
+// Defaults chosen in plan 02 P.2 from fix.archive/02.geo.core.bench.md:
+// level 16 (~150 m cells), 64 covering cells (<= 0.7 ms per cover, ~1.4x candidates).
+constexpr int kDefaultLevel = 16;
+constexpr int kDefaultMaxCells = 64;
+
 // Sorted, disjoint, non-adjacent ranges whose union holds the cell_of() of every
 // point inside `polygon` (boundary included) at `level`.  A superset: callers
-// recheck exactly.  `max_cells` bounds the S2 covering size before the boundary
-// expansion below (more cells = tighter, more ranges).
+// recheck exactly.  `max_cells` bounds the S2 covering size (more cells =
+// tighter, more ranges).
 std::vector<CellRange> cover(const S2Polygon& polygon, int level, int max_cells);
 
 } // namespace geo_index
