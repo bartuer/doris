@@ -261,6 +261,21 @@
         :audit: code-review/gpt-6-astra r5: 1 MEDIUM fixed (fix.archive/02.audit.be-adapter.md)
   - [ ] Z.3 100 M points, the 3 polygons: rows scanned <= 5%, >= 3x vs bbox baseline (G4)
         -> =fix.archive/01.geo.bench.md=.
+        MEASURED 21:55Z: city scans 3.33% (PASS), 7.5x vs full ST_Contains, but 1.0x vs the planar bbox (FAIL the 3x
+        bar; the bbox also loses 763 geodesic hits).  thin 4.8x vs bbox, concave 0.9x.  Profile: for a compact polygon
+        the bbox is as tight as the 64-cell cover (3.07 M vs 3.33 M candidates) and as cheap to evaluate.
+        Item stays [ ]: G4's 3x-vs-bbox needs the levers below.  :interrupt: G4 bar vs a WRONG baseline -- keep "3x vs
+        bbox" (then Z.3a/Z.3b are required) or restate G4 as "3x vs a correct full ST_Contains" (met: 7.5x)?
+        :recommend: keep the bar and do Z.3a first (reversible, measurable).
+        :interrupt_TAKEN_AND_CLOSED: 21:58Z by the exec_plan ladder rung 3 (:recommend:): bar kept; Z.3b first (DDL only,
+        cheapest to measure), then Z.3a.  Owner can restate G4 later; nothing irreversible is decided here.
+  - [ ] Z.3a interior cover: =cover()= also returns the interior covering (S2 =GetInteriorCovering=); rows whose cell is
+        in an interior range skip ST_Contains (=s2_covers= returns a 2-level answer, or a second predicate
+        =s2_within_interior=).  Expected: ~0 rechecks for the city's interior hits.
+        :test_tool: plan 02 property tests extended (interior cell => every point inside); cluster: city <= 1/3 of bbox ms.
+  - [ ] Z.3b sort the indexed table by geo_cell (key order or cluster key) so cover ranges are contiguous row spans;
+        measure load cost vs query gain.
+        :test_tool: fix.archive/01.geo.bench.md row with cell-sorted table.
   - [ ] Z.4 port to =branch-4.1=: the core directory unchanged + the 4.1 adapter; BE UT + =geo_index_p0= pass (F3/F4).
         :test_tool: =./run-be-ut.sh --run --filter=GeoIndex*= and =./run-regression-test.sh --run -d geo_index_p0= PASS on 4.1.
   - [ ] Z.5 port to =branch-3.1=: same core + the 3.1 adapter; same tests pass (F3/F4).
