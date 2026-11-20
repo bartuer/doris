@@ -54,14 +54,11 @@ public class S2Cell extends ScalarFunction
         super("s2_cell", arg0, arg1, arg2);
     }
 
-    private S2Cell(ScalarFunctionParams functionParams) {
-        super(functionParams);
-    }
-
     @Override
     public S2Cell withChildren(List<Expression> children) {
         Preconditions.checkArgument(children.size() == 2 || children.size() == 3);
-        return new S2Cell(getFunctionParams(children));
+        return children.size() == 2 ? new S2Cell(children.get(0), children.get(1))
+                : new S2Cell(children.get(0), children.get(1), children.get(2));
     }
 
     @Override

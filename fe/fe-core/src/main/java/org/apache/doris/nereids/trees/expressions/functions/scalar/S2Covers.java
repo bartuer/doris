@@ -48,14 +48,10 @@ public class S2Covers extends ScalarFunction
         super("s2_covers", arg0, arg1);
     }
 
-    private S2Covers(ScalarFunctionParams functionParams) {
-        super(functionParams);
-    }
-
     @Override
     public S2Covers withChildren(List<Expression> children) {
         Preconditions.checkArgument(children.size() == 2);
-        return new S2Covers(getFunctionParams(children));
+        return new S2Covers(children.get(0), children.get(1));
     }
 
     @Override
