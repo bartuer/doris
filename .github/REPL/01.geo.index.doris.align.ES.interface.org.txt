@@ -252,7 +252,7 @@
         on 10 M rows: city 180 -> 48-58 ms, thin 215 -> 55-59, concave 203 -> 96, hits identical.
         :audit: code-review/gpt-6-astra r4: 2 HIGH, 2 fixed (fix.archive/02.audit.be-adapter.md)
 
-* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [5/7]
+* TODO Phase Z -- integrate E2E: ES-aligned query, correctness diff, speedup, 4.1 + 3.1 ports [6/7]
   :needs: {"tier":"wsl","box":"c05"}
   :after: A,B,C
   - [X] Z.1 ES -> Doris mapping table (G2) in =fix.archive/01.geo.es.mapping.md=.
@@ -309,13 +309,24 @@
     - => F2's "thin per-version adapter" = functions_geo_cell.cpp registration + the BETWEEN patch per branch.
   - [X] Z.4 port to =branch-4.1=: the core directory unchanged + the 4.1 adapter; BE UT + =geo_index_p0= pass (F3/F4).
         :test_tool: =./run-be-ut.sh --run --filter=GeoIndex*= and =./run-regression-test.sh --run -d geo_index_p0= PASS on 4.1.
+        - Re-verified after audit round 6 (NULL cells under NOT/OR) @2eeb32b601: BE UT 4/4 ASAN, geo_index_p0 PASS
+          (its new NOT/OR check failed on the unfixed build: 18531 vs 18528 rows).
         - DONE 2026-11-20 on fork branch =geo-index-4.1= @21292e294d: BE UT GeoCellTest 4/4 under ASAN (EXIT=0),
           FE UT GeoIndexRewriteTest 3/3, =geo_index_p0= on a 4.1 RELEASE cluster (c03): 1 suite, 0 failed (P0_EXIT=0).
         - 4.1 adapter deltas: no approximate index results (bitmap marked exact; ST_Contains stays its own conjunct),
           one-sided BKD queries (no BETWEEN_QUERY on 4.1).  Cluster note: build with DISABLE_BE_JAVA_EXTENSIONS
           needs =enable_java_support = false= in be.conf.
-  - [ ] Z.5 port to =branch-3.1=: same core + the 3.1 adapter; same tests pass (F3/F4).
+  - [X] Z.5 port to =branch-3.1=: same core + the 3.1 adapter; same tests pass (F3/F4).
         :test_tool: as Z.4, on branch-3.1.
+        - DONE 2026-11-20 on fork branch =geo-index-3.1= @f2dd2f6598 (image =apache/doris:build-env-for-3.1=):
+          BE UT GeoCellTest 4/4 under ASAN (c07, EXIT=0), FE UT GeoIndexRewriteTest 3/3 (c08, EXIT=0),
+          =geo_index_p0= on a 3.1 RELEASE cluster (c17): 1 suite, 0 failed.
+        - 3.1 deltas: vectorized function API (=size_t result=, =be/src/vec/functions=); FE functions build
+          children through constructors (no =ScalarFunctionParams=); s2_cell/s2_covers also registered in the
+          legacy builtin catalog (=gensrc/script/doris_builtins_functions.py=), because 3.1 analyzes generated
+          columns there; suite uses =getProfileList/getProfile= and has no =enable_condition_cache=.
+        - Both ports: the exact index result carries the column NULL bitmap (audit round 6,
+          =fix.archive/02.audit.be-adapter.md=).
 
 * Main Loop
   - (R) run the phase's :test_tool: in a separate shell from the build; read Profile / UT output.
