@@ -2063,7 +2063,13 @@ visible_functions = {
 
         [['ST_Circle'], 'VARCHAR', ['DOUBLE', 'DOUBLE', 'DOUBLE'], 'ALWAYS_NULLABLE'],
 
-        [['ST_Contains'], 'BOOLEAN', ['VARCHAR', 'VARCHAR'], 'ALWAYS_NULLABLE']
+        [['ST_Contains'], 'BOOLEAN', ['VARCHAR', 'VARCHAR'], 'ALWAYS_NULLABLE'],
+
+        # geo index (3.1 generated columns are analyzed by the legacy catalog)
+        [['s2_cell'], 'BIGINT', ['DOUBLE', 'DOUBLE'], 'ALWAYS_NULLABLE'],
+        [['s2_cell'], 'BIGINT', ['DOUBLE', 'DOUBLE', 'INT'], 'ALWAYS_NULLABLE'],
+        [['s2_covers'], 'BOOLEAN', ['BIGINT', 'VARCHAR'], 'DEPEND_ON_ARGUMENT'],
+        [['s2_covers'], 'BOOLEAN', ['BIGINT', 'STRING'], 'DEPEND_ON_ARGUMENT']
     ],
 
     # grouping sets functions
