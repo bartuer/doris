@@ -119,7 +119,13 @@ suite("test_geo_index") {
     def token = "geo_index_profile_" + UUID.randomUUID().toString()
     sql """SELECT /* ${token} */ count(*) FROM geo_index_pts
         WHERE ST_Contains(ST_Polygon('${polygons.city}'), ST_Point(lon, lat))"""
-    String profileString = profileAction.getProfileBySql(token, ["RowsInvertedIndexFiltered"])
+    // 3.1's ProfileAction has no getProfileBySql: find the profile id by the token.
+    def profileId = null
+    for (int i = 0; i < 20 && profileId == null; i++) {
+        profileId = profileAction.getProfileList().find { it["Sql Statement"].contains(token) }?.get("Profile ID")
+        if (profileId == null) { Thread.sleep(500) }
+    }
+    String profileString = profileAction.getProfile(profileId).toString()
     Matcher matcher = Pattern.compile("RowsInvertedIndexFiltered:\\s*([0-9,]+)").matcher(profileString)
     long indexFiltered = 0
     while (matcher.find()) {
