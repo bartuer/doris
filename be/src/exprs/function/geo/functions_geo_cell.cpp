@@ -206,7 +206,8 @@ public:
         // over index results use universe - data - null (audit round 6).
         auto nulls = std::make_shared<roaring::Roaring>();
         // has_null() is Result<bool>: test the value, not whether the Result holds one.
-        if (DORIS_TRY(iter->has_null())) {
+        const bool has_null = DORIS_TRY(iter->has_null());
+        if (has_null) {
             segment_v2::InvertedIndexQueryCacheHandle null_bitmap_cache_handle;
             RETURN_IF_ERROR(iter->read_null_bitmap(&null_bitmap_cache_handle));
             *nulls = *null_bitmap_cache_handle.get_bitmap();
