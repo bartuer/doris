@@ -67,8 +67,10 @@
 
 * Dependencies
   - [X] D1 plan 01 F1-F5 closed (7dfe916aad); this plan IS plan 01 Phase C's core, split out (plan 01 C.1/C.2 link here).
-  - [ ] D2 S2 0.10.0 headers + lib: Docker (=libs2-dev=), macOS (=brew install s2geometry=), Doris build
+  - [X] D2 S2 0.10.0 headers + lib: Docker (=libs2-dev=), macOS (=brew install s2geometry=), Doris build
         (=thirdparty/installed=).  gtest: =libgtest-dev= / =brew install googletest= / Doris thirdparty.
+        DONE 2026-11-20: Docker image + Doris thirdparty on master, branch-4.1 and branch-3.1 (BE UT under ASAN on all
+        three); macOS waived by owner 2026-11-19T23:33Z (B.2).
 
 * Design (passes /kiss -- record changes here, not in code)
   - P.2 defaults (fix.archive/02.geo.core.bench.md): column level 16 (~150 m), cover max_cells 64 (0.4-0.7 ms per
