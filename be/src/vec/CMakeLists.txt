@@ -28,5 +28,7 @@ endif ()
 add_library(Vec STATIC
         ${VEC_FILES}
 )
+# Geo index core (plan 02): s2_cell / s2_covers in functions_geo_cell.cpp.
+target_link_libraries(Vec PRIVATE geo_index_core)
 
 pch_reuse(Vec)
