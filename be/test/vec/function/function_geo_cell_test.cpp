@@ -108,11 +108,12 @@ TEST(GeoCellTest, S2CoversRowPathIsSupersetOfStContains) {
         cases.push_back({{geo_index::cell_of(lat, lon, 16), city}, uint8_t(1)});
     }
     ASSERT_GT(inside_count, 0);
-    // 3.1's check_function needs one row per call when an argument is Consted (as in
+    // 3.1 harness: arguments are nullable by default, so the result is Nullable(UInt8); one
+    // row per call when an argument is Consted (as in
     // function_geo_test.cpp).
     for (const auto& line : cases) {
         DataSet one = {line};
-        EXPECT_TRUE((check_function<DataTypeUInt8, false>(
+        EXPECT_TRUE((check_function<DataTypeUInt8, true>(
                              "s2_covers", {TypeIndex::Int64, Consted {TypeIndex::String}}, one))
                             .ok());
     }
