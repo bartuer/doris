@@ -202,8 +202,16 @@ public:
             RETURN_IF_ERROR(hi_status);
             *rows |= *at_least & *at_most;
         }
-        bitmap_result =
-                segment_v2::InvertedIndexResultBitmap(rows, std::make_shared<roaring::Roaring>());
+        // The result is exact, so NULL cells must be reported as NULL (not false): NOT and OR
+        // over index results use universe - data - null (audit round 6).
+        auto nulls = std::make_shared<roaring::Roaring>();
+        if (iter->has_null()) {
+            segment_v2::InvertedIndexQueryCacheHandle null_bitmap_cache_handle;
+            RETURN_IF_ERROR(iter->read_null_bitmap(&null_bitmap_cache_handle));
+            *nulls = *null_bitmap_cache_handle.get_bitmap();
+            *rows -= *nulls;
+        }
+        bitmap_result = segment_v2::InvertedIndexResultBitmap(rows, nulls);
         return Status::OK();
     }
 };

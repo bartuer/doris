@@ -131,6 +131,14 @@ suite("test_geo_index") {
 
     // NULL and out-of-range coordinates: s2_cell is NULL, the row is never a hit.
     order_qt_specials """SELECT id, geo_cell IS NULL FROM geo_index_pts WHERE id >= 900001 ORDER BY id"""
+    // NULL cells stay NULL under NOT / OR on the index path (audit round 6): compare with the row path.
+    def negated = """SELECT count(*) FROM geo_index_pts
+        WHERE NOT s2_covers(geo_cell, '${polygons.city}') OR id = 900008"""
+    def viaIndex = sql negated
+    sql "set enable_inverted_index_query = false"
+    def viaRows = sql negated
+    sql "set enable_inverted_index_query = true"
+    assertEquals(viaRows, viaIndex)
     // s2_covers on its own (the explicit form) agrees with the rewritten query.
     order_qt_explicit """
         SELECT count(*) FROM geo_index_pts
