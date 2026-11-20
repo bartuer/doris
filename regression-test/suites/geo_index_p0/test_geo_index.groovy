@@ -115,7 +115,6 @@ suite("test_geo_index") {
     sql "set enable_profile = true"
     sql "set profile_level = 2"
     sql "set enable_sql_cache = false"
-    sql "set enable_condition_cache = false"
     def profileAction = new ProfileAction(context)
     def token = "geo_index_profile_" + UUID.randomUUID().toString()
     sql """SELECT /* ${token} */ count(*) FROM geo_index_pts
