@@ -108,9 +108,14 @@ TEST(GeoCellTest, S2CoversRowPathIsSupersetOfStContains) {
         cases.push_back({{geo_index::cell_of(lat, lon, 16), city}, uint8_t(1)});
     }
     ASSERT_GT(inside_count, 0);
-    EXPECT_TRUE((check_function<DataTypeUInt8, false>(
-                         "s2_covers", {TypeIndex::Int64, Consted {TypeIndex::String}}, cases))
-                        .ok());
+    // 3.1's check_function needs one row per call when an argument is Consted (as in
+    // function_geo_test.cpp).
+    for (const auto& line : cases) {
+        DataSet one = {line};
+        EXPECT_TRUE((check_function<DataTypeUInt8, false>(
+                             "s2_covers", {TypeIndex::Int64, Consted {TypeIndex::String}}, one))
+                            .ok());
+    }
 }
 
 } // namespace doris::vectorized
